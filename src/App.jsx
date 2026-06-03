@@ -41,7 +41,7 @@ function loadHtmlImage(dataUrl) {
 async function autoCropFrontContent(dataUrl) {
   const img = await loadHtmlImage(dataUrl);
 
-  const maxDetectSize = 1200;
+  const maxDetectSize = 900;
   const detectScale = Math.min(1, maxDetectSize / Math.max(img.naturalWidth, img.naturalHeight));
   const detectW = Math.max(1, Math.round(img.naturalWidth * detectScale));
   const detectH = Math.max(1, Math.round(img.naturalHeight * detectScale));
@@ -102,7 +102,49 @@ async function autoCropFrontContent(dataUrl) {
   const bgB = bSum / count;
   const bgA = aSum / count;
 
-  const diffThreshold = 58;
+  const visited = new Uint8Array(detectW * detectH);
+  const queue = [];
+  let head = 0;
+
+  const isBackgroundLike = (index) => {
+    const i = index * 4;
+    const dr = Math.abs(px[i] - bgR);
+    const dg = Math.abs(px[i + 1] - bgG);
+    const db = Math.abs(px[i + 2] - bgB);
+    const da = Math.abs(px[i + 3] - bgA);
+    const rgbDiff = dr + dg + db;
+    return rgbDiff <= 82 && da <= 80;
+  };
+
+  const enqueueIfBg = (index) => {
+    if (index < 0 || index >= visited.length) return;
+    if (visited[index]) return;
+    if (!isBackgroundLike(index)) return;
+    visited[index] = 1;
+    queue.push(index);
+  };
+
+  // Flood-fill from all edges to identify contiguous outer background.
+  for (let x = 0; x < detectW; x += 1) {
+    enqueueIfBg(x);
+    enqueueIfBg((detectH - 1) * detectW + x);
+  }
+  for (let y = 0; y < detectH; y += 1) {
+    enqueueIfBg(y * detectW);
+    enqueueIfBg(y * detectW + (detectW - 1));
+  }
+
+  while (head < queue.length) {
+    const index = queue[head++];
+    const x = index % detectW;
+    const y = (index - x) / detectW;
+
+    if (x > 0) enqueueIfBg(index - 1);
+    if (x < detectW - 1) enqueueIfBg(index + 1);
+    if (y > 0) enqueueIfBg(index - detectW);
+    if (y < detectH - 1) enqueueIfBg(index + detectW);
+  }
+
   let minX = detectW;
   let minY = detectH;
   let maxX = -1;
@@ -110,14 +152,9 @@ async function autoCropFrontContent(dataUrl) {
 
   for (let y = 0; y < detectH; y += 1) {
     for (let x = 0; x < detectW; x += 1) {
-      const i = (y * detectW + x) * 4;
-      const dr = Math.abs(px[i] - bgR);
-      const dg = Math.abs(px[i + 1] - bgG);
-      const db = Math.abs(px[i + 2] - bgB);
-      const da = Math.abs(px[i + 3] - bgA) * 0.25;
-      const diff = dr + dg + db + da;
-
-      if (diff > diffThreshold) {
+      const idx = y * detectW + x;
+      const alpha = px[idx * 4 + 3];
+      if (!visited[idx] && alpha > 10) {
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (x > maxX) maxX = x;
@@ -135,7 +172,7 @@ async function autoCropFrontContent(dataUrl) {
   const areaRatio = (boxW * boxH) / (detectW * detectH);
 
   // If there is no meaningful border to trim, keep original.
-  if (areaRatio > 0.96) {
+  if (areaRatio > 0.98) {
     return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
   }
 
