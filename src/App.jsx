@@ -281,6 +281,140 @@ function wrapStyledSegments(ctx, segments, maxWidth, maxLines, fontPx, fontFamil
   return lines;
 }
 
+function trimLeadingSpaces(tokens) {
+  const out = [...tokens];
+  while (out.length > 0 && out[0].text.trim() === "") {
+    out.shift();
+  }
+  return out;
+}
+
+function trimTrailingSpaces(tokens) {
+  const out = [...tokens];
+  while (out.length > 0 && out[out.length - 1].text.trim() === "") {
+    out.pop();
+  }
+  return out;
+}
+
+function lineToTokens(line) {
+  const tokens = [];
+  for (const segment of line.segments) {
+    const parts = segment.text.split(/(\s+)/).filter(Boolean);
+    for (const part of parts) {
+      tokens.push({ text: part, italic: segment.italic });
+    }
+  }
+  return tokens;
+}
+
+function tokensToLine(tokens, ctx, fontPx, fontFamily) {
+  const merged = [];
+  let width = 0;
+
+  for (const token of tokens) {
+    ctx.font = `${token.italic ? "italic" : "normal"} 400 ${fontPx}px ${fontFamily}`;
+    const tokenWidth = ctx.measureText(token.text).width;
+    const prev = merged[merged.length - 1];
+    if (prev && prev.italic === token.italic) {
+      prev.text += token.text;
+      prev.width += tokenWidth;
+    } else {
+      merged.push({ text: token.text, italic: token.italic, width: tokenWidth });
+    }
+    width += tokenWidth;
+  }
+
+  return { segments: merged, width };
+}
+
+function wordCountInLine(line) {
+  const text = line.segments.map((segment) => segment.text).join("").trim();
+  if (!text) return 0;
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
+function rebalanceSingleWordLines(lines, maxWidth, ctx, fontPx, fontFamily) {
+  if (lines.length < 2) return lines;
+  const out = lines.map((line) => ({ ...line, segments: [...line.segments] }));
+
+  for (let i = 1; i < out.length; i += 1) {
+    const current = out[i];
+    const previous = out[i - 1];
+    if (wordCountInLine(current) !== 1 || wordCountInLine(previous) < 3) {
+      continue;
+    }
+
+    let prevTokens = trimTrailingSpaces(lineToTokens(previous));
+    let curTokens = trimLeadingSpaces(lineToTokens(current));
+
+    let lastWordIndex = -1;
+    for (let idx = prevTokens.length - 1; idx >= 0; idx -= 1) {
+      if (prevTokens[idx].text.trim() !== "") {
+        lastWordIndex = idx;
+        break;
+      }
+    }
+    if (lastWordIndex < 0) continue;
+
+    const movedWord = prevTokens[lastWordIndex];
+    prevTokens = trimTrailingSpaces(prevTokens.slice(0, lastWordIndex));
+
+    const newCurrentTokens = [movedWord];
+    if (curTokens.length > 0) {
+      newCurrentTokens.push({ text: " ", italic: movedWord.italic });
+      newCurrentTokens.push(...curTokens);
+    }
+
+    const prevCandidate = tokensToLine(prevTokens, ctx, fontPx, fontFamily);
+    const curCandidate = tokensToLine(newCurrentTokens, ctx, fontPx, fontFamily);
+
+    if (prevCandidate.width <= maxWidth && curCandidate.width <= maxWidth) {
+      out[i - 1] = prevCandidate;
+      out[i] = curCandidate;
+    }
+  }
+
+  return out;
+}
+
+function suggestLyricsFontSize({
+  minPt,
+  maxPt,
+  textW,
+  lyricsAvailH,
+  segments,
+  fontFamily,
+  targetFill,
+  ctx
+}) {
+  let best = minPt;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (let pt = maxPt; pt >= minPt; pt -= 0.25) {
+    const px = pt * 4;
+    const lineH = px * 1.3;
+    const maxLines = Math.max(1, Math.floor(lyricsAvailH / lineH));
+    const rawLines = wrapStyledSegments(ctx, segments, textW, maxLines, px, fontFamily);
+    const lines = rebalanceSingleWordLines(rawLines, textW, ctx, px, fontFamily);
+
+    const usedH = lines.length * lineH;
+    const fill = lyricsAvailH > 0 ? usedH / lyricsAvailH : 0;
+    const orphanCount = lines.filter((line) => wordCountInLine(line) === 1).length;
+
+    const fillPenalty = Math.abs(fill - targetFill);
+    const orphanPenalty = orphanCount * 0.5;
+    const score = fillPenalty + orphanPenalty;
+
+    if (score < bestScore) {
+      bestScore = score;
+      best = Number(pt.toFixed(2));
+    }
+  }
+
+  return best;
+}
+
 export default function App() {
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [imageMeta, setImageMeta] = useState(null);
@@ -292,6 +426,7 @@ export default function App() {
   const [titleSize, setTitleSize] = useState(20);
   const [lyricsHtml, setLyricsHtml] = useState("");
   const [fontSize, setFontSize] = useState(11);
+  const [suggestedFontSize, setSuggestedFontSize] = useState(11);
   const [textAlign, setTextAlign] = useState("center");
 
   const [message, setMessage] = useState("");
@@ -320,6 +455,46 @@ export default function App() {
       return err instanceof Error ? err.message : "Layout is invalid.";
     }
   }, [bookmarkW, bookmarkH]);
+
+  useEffect(() => {
+    const segments = getLyricsSegmentsFromHtml(lyricsHtml);
+    if (segments.length === 0) {
+      setSuggestedFontSize(fontSize);
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bookmarkW * 300));
+    canvas.height = Math.max(1, Math.round(bookmarkH * 300));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const pad = 0.12 * 300;
+    const textW = canvas.width - pad * 2;
+    const textH = canvas.height - pad * 2;
+    const titlePx = titleSize * 4;
+
+    let titleBlockH = 0;
+    if (songTitle.trim()) {
+      const fitted = fitSingleLineTitle(ctx, songTitle.trim(), textW, titlePx, titleFont);
+      titleBlockH = fitted.sizePx * 0.86 + fitted.sizePx * 0.08;
+    }
+
+    const decorativeReserved = backImageDataUrl ? canvas.height * 0.28 : 0;
+    const lyricsAvailH = Math.max(0, textH - titleBlockH - decorativeReserved);
+    const family = '"Cormorant Garamond", "EB Garamond", "Cormorant", serif';
+    const suggestion = suggestLyricsFontSize({
+      minPt: 8,
+      maxPt: 18,
+      textW,
+      lyricsAvailH,
+      segments,
+      fontFamily: family,
+      targetFill: 0.75,
+      ctx
+    });
+    setSuggestedFontSize(suggestion);
+  }, [lyricsHtml, bookmarkW, bookmarkH, songTitle, titleSize, titleFont, backImageDataUrl, fontSize]);
 
   const handleImageUpload = async (event) => {
     setError("");
@@ -449,13 +624,13 @@ export default function App() {
       ctx.drawImage(backImageElement, drawX, drawY, drawW, drawH);
       ctx.restore();
 
-      const blendTop = Math.round(canvas.height * 0.8);
-      const blendBottom = canvas.height;
+      const blendTop = Math.max(destY, Math.round(canvas.height * 0.8));
+      const blendBottom = destY + destH;
       const gradient = ctx.createLinearGradient(0, blendTop, 0, blendBottom);
-      gradient.addColorStop(0, hexToRgba(effectiveBackColor, 1));
-      gradient.addColorStop(0.35, hexToRgba(effectiveBackColor, 0.82));
-      gradient.addColorStop(0.65, hexToRgba(effectiveBackColor, 0.48));
-      gradient.addColorStop(0.85, hexToRgba(effectiveBackColor, 0.18));
+      gradient.addColorStop(0, hexToRgba(effectiveBackColor, 0.78));
+      gradient.addColorStop(0.22, hexToRgba(effectiveBackColor, 0.58));
+      gradient.addColorStop(0.52, hexToRgba(effectiveBackColor, 0.32));
+      gradient.addColorStop(0.8, hexToRgba(effectiveBackColor, 0.12));
       gradient.addColorStop(1, hexToRgba(effectiveBackColor, 0));
       ctx.fillStyle = gradient;
       ctx.fillRect(0, blendTop, canvas.width, blendBottom - blendTop);
@@ -486,7 +661,8 @@ export default function App() {
 
     const segments = getLyricsSegmentsFromHtml(lyricsHtml);
     const lyricsFamily = '"Cormorant Garamond", "EB Garamond", "Cormorant", serif';
-    const lines = wrapStyledSegments(ctx, segments, textW, maxLyricLines, lyricsPx, lyricsFamily);
+    const rawLines = wrapStyledSegments(ctx, segments, textW, maxLyricLines, lyricsPx, lyricsFamily);
+    const lines = rebalanceSingleWordLines(rawLines, textW, ctx, lyricsPx, lyricsFamily);
 
     ctx.fillStyle = "#111111";
     if (songTitle.trim()) {
@@ -673,6 +849,14 @@ export default function App() {
               onChange={(e) => setFontSize(Number(e.target.value))}
             />
           </label>
+
+          <div className="info-card">
+            Suggested lyrics size for nicer wrapping and ~75% vertical fill: <strong>{suggestedFontSize.toFixed(2)} pt</strong>
+            <br />
+            <button type="button" className="toolbar-button" onClick={() => setFontSize(suggestedFontSize)}>
+              Apply Suggested Size
+            </button>
+          </div>
 
           <label>
             Lyrics alignment
