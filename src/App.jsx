@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { useEffect, useMemo, useRef, useState } from "react";
-import templeBackImage from "../assets/images/rexburg_temple_lds-cropped.jpg";
+import templeBackImage from "../assets/images/Rexburg_temple_golden.jpg";
 
 const LETTER_WIDTH = 11;
 const LETTER_HEIGHT = 8.5;
