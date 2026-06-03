@@ -82,16 +82,18 @@ function computeSingleRowPositions(bookmarkW, bookmarkH) {
   }));
 }
 
-async function ensureFontsLoaded(titleSize, lyricSize) {
+async function ensureFontsLoaded(titleSize, lyricSize, titleFont) {
   if (!document?.fonts?.load) return;
   await Promise.all([
-    document.fonts.load(`${titleSize * 4}px "Allura"`),
+    document.fonts.load(`${titleSize * 4}px "${titleFont}"`),
     document.fonts.load(`${lyricSize * 4}px "Cormorant Garamond"`)
   ]);
 }
 
-function fitSingleLineTitle(ctx, title, maxWidth, startPx) {
-  const family = '"Allura", "Alex Brush", "Great Vibes", cursive';
+function fitSingleLineTitle(ctx, title, maxWidth, startPx, titleFont) {
+  const family = titleFont === "Beau Rivage"
+    ? '"Beau Rivage", "Allura", "Alex Brush", cursive'
+    : '"Allura", "Alex Brush", "Great Vibes", cursive';
   const minPx = 34;
   let sizePx = startPx;
   let content = title;
@@ -120,6 +122,7 @@ export default function App() {
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [imageMeta, setImageMeta] = useState(null);
   const [songTitle, setSongTitle] = useState("");
+  const [titleFont, setTitleFont] = useState("Allura");
   const [titleSize, setTitleSize] = useState(20);
   const [lyrics, setLyrics] = useState("");
   const [fontSize, setFontSize] = useState(11);
@@ -213,7 +216,7 @@ export default function App() {
     let fittedTitle = null;
     let titleBlockH = 0;
     if (songTitle.trim()) {
-      fittedTitle = fitSingleLineTitle(ctx, songTitle.trim(), textW, titlePx);
+      fittedTitle = fitSingleLineTitle(ctx, songTitle.trim(), textW, titlePx, titleFont);
       const titleLineH = fittedTitle.sizePx * 0.86;
       const titleGap = fittedTitle.sizePx * 0.08;
       titleBlockH = titleLineH + titleGap;
@@ -230,7 +233,10 @@ export default function App() {
 
     ctx.fillStyle = "#111111";
     if (songTitle.trim()) {
-      ctx.font = `400 ${fittedTitle.sizePx}px \"Allura\", \"Alex Brush\", \"Great Vibes\", cursive`;
+      const titleFamily = titleFont === "Beau Rivage"
+        ? '\"Beau Rivage\", \"Allura\", \"Alex Brush\", cursive'
+        : '\"Allura\", \"Alex Brush\", \"Great Vibes\", cursive';
+      ctx.font = `400 ${fittedTitle.sizePx}px ${titleFamily}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
       ctx.fillText(fittedTitle.text, canvas.width / 2, pad - fittedTitle.sizePx * 0.02);
@@ -284,7 +290,7 @@ export default function App() {
 
     setIsGenerating(true);
     try {
-      await ensureFontsLoaded(titleSize, fontSize);
+      await ensureFontsLoaded(titleSize, fontSize, titleFont);
       const positions = computeSingleRowPositions(bookmarkW, bookmarkH);
 
       const pdf = new jsPDF({
@@ -343,6 +349,14 @@ export default function App() {
               onChange={(e) => setSongTitle(e.target.value)}
               placeholder="Enter song title"
             />
+          </label>
+
+          <label>
+            Song title font
+            <select value={titleFont} onChange={(e) => setTitleFont(e.target.value)}>
+              <option value="Allura">Allura</option>
+              <option value="Beau Rivage">Beau Rivage</option>
+            </select>
           </label>
 
           <label>
