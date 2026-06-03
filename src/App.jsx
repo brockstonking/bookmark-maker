@@ -749,7 +749,12 @@ export default function App() {
       drawFooter(pdf);
 
       pdf.addPage("letter", "landscape");
-      for (const pos of positions) {
+      // Mirror positions 180° to compensate for short-edge duplex flip.
+      const backPositions = positions.map((pos) => ({
+        x: LETTER_WIDTH - pos.x - bookmarkW,
+        y: LETTER_HEIGHT - pos.y - bookmarkH,
+      }));
+      for (const pos of backPositions) {
         drawBack(pdf, pos);
       }
       drawFooter(pdf);
