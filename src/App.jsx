@@ -596,46 +596,54 @@ export default function App() {
 
     const bottomImageHeight = Math.round(canvas.height * 0.2);
     if (backImageElement && bottomImageHeight > 0) {
-      const destX = 0;
-      const destY = canvas.height - bottomImageHeight;
-      const destW = canvas.width;
-      const destH = bottomImageHeight;
+      const fullImageTop = Math.round(canvas.height * 0.68);
+      const fullImageBottom = canvas.height;
+      const fullImageH = fullImageBottom - fullImageTop;
+      const fullImageW = canvas.width;
+      const fullOpaqueTop = canvas.height - bottomImageHeight;
 
       const imgRatio = backImageElement.naturalWidth / backImageElement.naturalHeight;
-      const boxRatio = destW / destH;
+      const boxRatio = fullImageW / fullImageH;
       let drawW;
       let drawH;
 
       if (imgRatio > boxRatio) {
-        drawH = destH;
+        drawH = fullImageH;
         drawW = drawH * imgRatio;
       } else {
-        drawW = destW;
+        drawW = fullImageW;
         drawH = drawW / imgRatio;
       }
 
-      const drawX = destX + (destW - drawW) / 2;
-      // Keep the photo pinned to the bookmark bottom; overflow is cropped off the top.
-      const drawY = destY + destH - drawH;
+      const drawX = (fullImageW - drawW) / 2;
+      // Pin the image to the bookmark bottom and crop overflow from the top.
+      const drawY = fullImageBottom - drawH;
 
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(destX, destY, destW, destH);
-      ctx.clip();
-      ctx.drawImage(backImageElement, drawX, drawY, drawW, drawH);
-      ctx.restore();
+      // Draw image on its own layer, then apply a vertical alpha mask for a soft seam.
+      const layer = document.createElement("canvas");
+      layer.width = canvas.width;
+      layer.height = canvas.height;
+      const layerCtx = layer.getContext("2d");
+      if (layerCtx) {
+        layerCtx.save();
+        layerCtx.beginPath();
+        layerCtx.rect(0, fullImageTop, fullImageW, fullImageH);
+        layerCtx.clip();
+        layerCtx.drawImage(backImageElement, drawX, drawY, drawW, drawH);
+        layerCtx.restore();
 
-      const seamFadeHeight = Math.round(canvas.height * 0.08);
-      const blendTop = Math.max(0, destY - seamFadeHeight);
-      const blendBottom = Math.min(canvas.height, destY + seamFadeHeight);
-      const gradient = ctx.createLinearGradient(0, blendTop, 0, blendBottom);
-      gradient.addColorStop(0, hexToRgba(effectiveBackColor, 1));
-      gradient.addColorStop(0.38, hexToRgba(effectiveBackColor, 0.88));
-      gradient.addColorStop(0.65, hexToRgba(effectiveBackColor, 0.46));
-      gradient.addColorStop(0.85, hexToRgba(effectiveBackColor, 0.16));
-      gradient.addColorStop(1, hexToRgba(effectiveBackColor, 0));
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, blendTop, canvas.width, blendBottom - blendTop);
+        const alphaMask = layerCtx.createLinearGradient(0, fullImageTop, 0, fullOpaqueTop);
+        alphaMask.addColorStop(0, "rgba(0,0,0,0)");
+        alphaMask.addColorStop(0.55, "rgba(0,0,0,0.55)");
+        alphaMask.addColorStop(1, "rgba(0,0,0,1)");
+
+        layerCtx.globalCompositeOperation = "destination-in";
+        layerCtx.fillStyle = alphaMask;
+        layerCtx.fillRect(0, fullImageTop, canvas.width, canvas.height - fullImageTop);
+        layerCtx.globalCompositeOperation = "source-over";
+
+        ctx.drawImage(layer, 0, 0);
+      }
     }
 
     const pad = 0.12 * canvasScale;
