@@ -453,6 +453,9 @@ export default function App() {
       const blendBottom = canvas.height;
       const gradient = ctx.createLinearGradient(0, blendTop, 0, blendBottom);
       gradient.addColorStop(0, hexToRgba(effectiveBackColor, 1));
+      gradient.addColorStop(0.35, hexToRgba(effectiveBackColor, 0.82));
+      gradient.addColorStop(0.65, hexToRgba(effectiveBackColor, 0.48));
+      gradient.addColorStop(0.85, hexToRgba(effectiveBackColor, 0.18));
       gradient.addColorStop(1, hexToRgba(effectiveBackColor, 0));
       ctx.fillStyle = gradient;
       ctx.fillRect(0, blendTop, canvas.width, blendBottom - blendTop);
@@ -660,11 +663,12 @@ export default function App() {
           </div>
 
           <label>
-            Lyrics font size ({fontSize} pt)
+            Lyrics font size ({fontSize.toFixed(2)} pt)
             <input
-              type="range"
+              type="number"
               min="8"
               max="18"
+              step="0.25"
               value={fontSize}
               onChange={(e) => setFontSize(Number(e.target.value))}
             />
