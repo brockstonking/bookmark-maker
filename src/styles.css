@@ -99,6 +99,12 @@ body::after {
   border: 1px solid #c3cae8;
 }
 
+.crop-target-img {
+  max-width: 100%;
+  max-height: min(58vh, 500px);
+  display: block;
+}
+
 .crop-meta {
   margin-top: 8px;
   font-size: 0.86rem;

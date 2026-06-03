@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Cropper from "react-easy-crop";
+import ReactCrop from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
 import templeBackImage from "../assets/images/Rexburg_temple_golden.jpg";
 
 const LETTER_WIDTH = 11;
@@ -603,11 +604,10 @@ export default function App() {
   const [pendingImageMeta, setPendingImageMeta] = useState(null);
   const [cropAspect, setCropAspect] = useState(2 / 5.5);
   const [autoCropAspect, setAutoCropAspect] = useState(2 / 5.5);
-  const [cropRatioMode, setCropRatioMode] = useState("auto");
+  const [cropRatioMode, setCropRatioMode] = useState("free");
   const [customRatioW, setCustomRatioW] = useState(2);
   const [customRatioH, setCustomRatioH] = useState(5.5);
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
+  const [cropBox, setCropBox] = useState({ unit: "%", x: 10, y: 10, width: 80, height: 80 });
   const [initialCropPixels, setInitialCropPixels] = useState(null);
   const [selectedCropPixels, setSelectedCropPixels] = useState(null);
   const [cropResetKey, setCropResetKey] = useState(0);
@@ -626,6 +626,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const lyricsEditorRef = useRef(null);
+  const cropImageRef = useRef(null);
 
   useEffect(() => {
     if (lyricsEditorRef.current && lyricsEditorRef.current.innerHTML !== lyricsHtml) {
@@ -732,13 +733,12 @@ export default function App() {
       const aspect = Math.max(0.05, detected.width / detected.height);
       setAutoCropAspect(aspect);
       setCropAspect(aspect);
-      setCropRatioMode("auto");
+      setCropRatioMode("free");
       setCustomRatioW(Number(aspect.toFixed(3)));
       setCustomRatioH(1);
       setInitialCropPixels(detected);
       setSelectedCropPixels(detected);
-      setCrop({ x: 0, y: 0 });
-      setZoom(1);
+      setCropBox({ unit: "%", x: 10, y: 10, width: 80, height: 80 });
       setCropResetKey((key) => key + 1);
       setCropOpen(true);
     } catch (err) {
@@ -747,7 +747,32 @@ export default function App() {
   };
 
   const handleCropComplete = (_, croppedAreaPixels) => {
-    setSelectedCropPixels(croppedAreaPixels);
+    if (!cropImageRef.current || !croppedAreaPixels) return;
+    const img = cropImageRef.current;
+    const scaleX = img.naturalWidth / img.width;
+    const scaleY = img.naturalHeight / img.height;
+
+    setSelectedCropPixels({
+      x: croppedAreaPixels.x * scaleX,
+      y: croppedAreaPixels.y * scaleY,
+      width: croppedAreaPixels.width * scaleX,
+      height: croppedAreaPixels.height * scaleY
+    });
+  };
+
+  const handleCropImageLoad = (event) => {
+    const img = event.currentTarget;
+    cropImageRef.current = img;
+
+    if (!initialCropPixels) return;
+
+    const xPct = (initialCropPixels.x / img.naturalWidth) * 100;
+    const yPct = (initialCropPixels.y / img.naturalHeight) * 100;
+    const wPct = (initialCropPixels.width / img.naturalWidth) * 100;
+    const hPct = (initialCropPixels.height / img.naturalHeight) * 100;
+
+    setCropBox({ unit: "%", x: xPct, y: yPct, width: wPct, height: hPct });
+    setSelectedCropPixels(initialCropPixels);
   };
 
   const handleCropRatioModeChange = (mode) => {
@@ -1032,22 +1057,27 @@ export default function App() {
             <h2>Adjust Front Image Crop</h2>
             <p>Auto-crop has been applied. Adjust if needed, then confirm.</p>
             <div className="cropper-wrap" key={cropResetKey}>
-              <Cropper
-                image={pendingImageDataUrl}
-                crop={crop}
-                zoom={zoom}
-                aspect={cropAspect}
-                initialCroppedAreaPixels={initialCropPixels || undefined}
-                onCropChange={setCrop}
-                onZoomChange={setZoom}
-                onCropComplete={handleCropComplete}
-                objectFit="contain"
-              />
+              <ReactCrop
+                crop={cropBox}
+                onChange={(_, percentCrop) => setCropBox(percentCrop)}
+                onComplete={handleCropComplete}
+                aspect={cropRatioMode === "free" ? undefined : cropAspect}
+                keepSelection
+                ruleOfThirds
+              >
+                <img
+                  src={pendingImageDataUrl}
+                  alt="Crop source"
+                  className="crop-target-img"
+                  onLoad={handleCropImageLoad}
+                />
+              </ReactCrop>
             </div>
 
             <label>
               Crop ratio
               <select value={cropRatioMode} onChange={(e) => handleCropRatioModeChange(e.target.value)}>
+                <option value="free">Freeform (drag width/height/diagonal)</option>
                 <option value="auto">Auto detected</option>
                 <option value="bookmark">Bookmark 2:5.5</option>
                 <option value="portrait4x5">Portrait 4:5</option>
@@ -1080,18 +1110,6 @@ export default function App() {
                 </label>
               </div>
             ) : null}
-
-            <label>
-              Zoom ({zoom.toFixed(2)}x)
-              <input
-                type="range"
-                min="1"
-                max="4"
-                step="0.01"
-                value={zoom}
-                onChange={(e) => setZoom(Number(e.target.value))}
-              />
-            </label>
             {pendingImageMeta ? (
               <div className="crop-meta">Source image: {pendingImageMeta.width} x {pendingImageMeta.height}</div>
             ) : null}
