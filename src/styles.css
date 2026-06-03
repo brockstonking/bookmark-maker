@@ -2,14 +2,14 @@
 
 :root {
   color-scheme: light;
-  --bg: #f5f3ed;
-  --bg-accent: #f1d8b5;
-  --panel: #fffefb;
-  --text: #1d1b16;
-  --muted: #6f6658;
-  --line: #d9c8ae;
-  --brand: #2667ff;
-  --brand-dark: #1744a8;
+  --bg: #eef0ff;
+  --bg-accent: #dfe4ff;
+  --panel: rgba(255, 255, 255, 0.92);
+  --text: #24213a;
+  --muted: #625d7d;
+  --line: #cfd4ef;
+  --brand: #5a67d8;
+  --brand-dark: #4653b8;
   --ok: #1f7a4c;
   --warn: #8f4a1f;
   --error: #9d1f1f;
@@ -23,8 +23,34 @@ body {
   margin: 0;
   font-family: "Segoe UI", "Trebuchet MS", sans-serif;
   color: var(--text);
-  background: radial-gradient(circle at 10% 10%, var(--bg-accent), var(--bg) 40%);
+  background:
+    linear-gradient(180deg, rgba(244, 221, 143, 0) 0%, rgba(244, 221, 143, 0) 72%, rgba(236, 206, 120, 0.28) 72%, rgba(236, 206, 120, 0.52) 100%),
+    radial-gradient(circle at 10% 14%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 24%),
+    radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 20%),
+    linear-gradient(180deg, #f4f5ff 0%, #e9edff 42%, #dde3ff 72%, #d3c27a 72%, #d6bb69 100%);
   min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+body::before {
+  background:
+    linear-gradient(78deg, transparent 0 11%, rgba(177, 148, 72, 0.22) 11.5%, transparent 12.2%) 2% 100% / 8% 38% repeat-x,
+    linear-gradient(83deg, transparent 0 10%, rgba(188, 159, 81, 0.24) 10.7%, transparent 11.5%) 0 100% / 7% 32% repeat-x,
+    linear-gradient(74deg, transparent 0 10%, rgba(201, 172, 87, 0.18) 10.6%, transparent 11.4%) 4% 100% / 9% 28% repeat-x;
+  opacity: 0.8;
+}
+
+body::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.14) 65%, rgba(255, 255, 255, 0.04) 100%);
 }
 
 .page-shell {
@@ -35,10 +61,11 @@ body {
 
 .hero {
   border: 1px solid var(--line);
-  background: linear-gradient(110deg, #fff7ec, #f8f3ea);
+  background: linear-gradient(110deg, rgba(255, 255, 255, 0.96), rgba(241, 243, 255, 0.94));
   border-radius: 18px;
   padding: 18px 20px;
-  box-shadow: 0 8px 24px rgba(31, 19, 7, 0.08);
+  box-shadow: 0 10px 28px rgba(69, 77, 138, 0.12);
+  backdrop-filter: blur(8px);
 }
 
 .hero h1 {
@@ -69,7 +96,8 @@ body {
   background: var(--panel);
   border-radius: 16px;
   padding: 16px;
-  box-shadow: 0 6px 16px rgba(31, 19, 7, 0.06);
+  box-shadow: 0 10px 24px rgba(69, 77, 138, 0.1);
+  backdrop-filter: blur(10px);
 }
 
 .panel h2 {
@@ -90,11 +118,11 @@ textarea,
 button {
   width: 100%;
   margin-top: 6px;
-  border: 1px solid #cdbca0;
+  border: 1px solid #cbd0ef;
   border-radius: 10px;
   padding: 10px 11px;
   font: inherit;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.92);
 }
 
 textarea {
@@ -125,8 +153,8 @@ textarea {
 }
 
 .info-card {
-  background: #edf3ff;
-  border: 1px solid #c8d8ff;
+  background: rgba(232, 237, 255, 0.92);
+  border: 1px solid #c8d2ff;
 }
 
 .ok-note {
@@ -157,9 +185,9 @@ textarea {
 }
 
 .print-note {
-  background: #f7f5f0;
-  border: 1px solid #ddd2bf;
-  color: #50483b;
+  background: rgba(247, 244, 229, 0.94);
+  border: 1px solid #dfd3af;
+  color: #5a513d;
 }
 
 .success-box {
