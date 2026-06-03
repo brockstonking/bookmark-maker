@@ -28,6 +28,15 @@ function loadImageDimensions(dataUrl) {
   });
 }
 
+function loadHtmlImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Could not decode uploaded image."));
+    img.src = dataUrl;
+  });
+}
+
 function normalizeHexColor(value) {
   const raw = (value || "").trim();
   const shortMatch = raw.match(/^#([0-9a-fA-F]{3})$/);
@@ -137,9 +146,22 @@ function getLyricsSegmentsFromHtml(html) {
     }
   };
 
+  const pushNewline = () => {
+    segments.push({ newline: true });
+  };
+
   const walk = (node, inheritedItalic) => {
     if (node.nodeType === Node.TEXT_NODE) {
-      pushText(node.textContent || "", inheritedItalic);
+      const content = node.textContent || "";
+      const parts = content.split("\n");
+      parts.forEach((part, index) => {
+        if (part.length > 0) {
+          pushText(part, inheritedItalic);
+        }
+        if (index < parts.length - 1) {
+          pushNewline();
+        }
+      });
       return;
     }
 
@@ -149,11 +171,12 @@ function getLyricsSegmentsFromHtml(html) {
 
     const tag = node.tagName.toLowerCase();
     if (tag === "br") {
-      segments.push({ newline: true });
+      pushNewline();
       return;
     }
 
-    const currentItalic = inheritedItalic || tag === "i" || tag === "em";
+    const styleItalic = node.style && node.style.fontStyle === "italic";
+    const currentItalic = inheritedItalic || tag === "i" || tag === "em" || styleItalic;
     const isBlock = tag === "div" || tag === "p" || tag === "li";
 
     node.childNodes.forEach((child) => walk(child, currentItalic));
@@ -161,16 +184,12 @@ function getLyricsSegmentsFromHtml(html) {
     if (isBlock) {
       const prev = segments[segments.length - 1];
       if (prev && !prev.newline) {
-        segments.push({ newline: true });
+        pushNewline();
       }
     }
   };
 
   root.childNodes.forEach((child) => walk(child, false));
-
-  while (segments.length > 0 && segments[segments.length - 1].newline) {
-    segments.pop();
-  }
 
   return segments;
 }
@@ -267,7 +286,7 @@ export default function App() {
   const [imageMeta, setImageMeta] = useState(null);
   const [backColorHex, setBackColorHex] = useState("#FFFFFF");
   const [backImageDataUrl, setBackImageDataUrl] = useState("");
-  const [backImageMeta, setBackImageMeta] = useState(null);
+  const [backImageElement, setBackImageElement] = useState(null);
   const [songTitle, setSongTitle] = useState("");
   const [titleFont, setTitleFont] = useState("Allura");
   const [titleSize, setTitleSize] = useState(20);
@@ -330,15 +349,15 @@ export default function App() {
     const file = event.target.files?.[0];
     if (!file) {
       setBackImageDataUrl("");
-      setBackImageMeta(null);
+      setBackImageElement(null);
       return;
     }
 
     try {
       const dataUrl = await imageToDataUrl(file);
-      const dimensions = await loadImageDimensions(dataUrl);
+      const imageObj = await loadHtmlImage(dataUrl);
       setBackImageDataUrl(dataUrl);
-      setBackImageMeta(dimensions);
+      setBackImageElement(imageObj);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load back image.");
     }
@@ -400,13 +419,13 @@ export default function App() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const bottomImageHeight = Math.round(canvas.height * 0.25);
-    if (backImageDataUrl && backImageMeta && bottomImageHeight > 0) {
+    if (backImageDataUrl && backImageElement && bottomImageHeight > 0) {
       const destX = 0;
       const destY = canvas.height - bottomImageHeight;
       const destW = canvas.width;
       const destH = bottomImageHeight;
 
-      const imgRatio = backImageMeta.width / backImageMeta.height;
+      const imgRatio = backImageElement.naturalWidth / backImageElement.naturalHeight;
       const boxRatio = destW / destH;
       let drawW;
       let drawH;
@@ -422,9 +441,7 @@ export default function App() {
       const drawX = destX + (destW - drawW) / 2;
       const drawY = destY + (destH - drawH) / 2;
 
-      const img = new Image();
-      img.src = backImageDataUrl;
-      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+      ctx.drawImage(backImageElement, drawX, drawY, drawW, drawH);
 
       const blendHeight = Math.round(canvas.height * 0.12);
       const blendTop = Math.max(0, destY - blendHeight);
@@ -620,8 +637,8 @@ export default function App() {
             />
           </label>
 
-          <label>
-            Lyrics (Ctrl+I to toggle italics)
+          <div className="lyrics-section">
+            <div className="lyrics-label">Lyrics (Ctrl+I to toggle italics)</div>
             <div className="lyrics-toolbar">
               <button type="button" className="toolbar-button" onClick={makeItalicSelection}>Italic</button>
             </div>
@@ -634,7 +651,7 @@ export default function App() {
               onInput={handleLyricsInput}
               onKeyDown={handleLyricsKeyDown}
             />
-          </label>
+          </div>
 
           <label>
             Lyrics font size ({fontSize} pt)
