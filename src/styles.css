@@ -223,6 +223,54 @@ textarea {
   font-weight: 600;
 }
 
+.offset-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.offset-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #3d3857;
+}
+
+.offset-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.offset-axis-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #544f6b;
+  font-weight: 600;
+}
+
+.offset-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.offset-value {
+  min-width: 44px;
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #3d3857;
+  font-family: monospace;
+}
+
+.offset-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #7f7a97;
+}
+
 .hex-row {
   display: grid;
   grid-template-columns: 1fr auto;

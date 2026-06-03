@@ -434,6 +434,9 @@ export default function App() {
   const [suggestedFontSize, setSuggestedFontSize] = useState(11);
   const [textAlign, setTextAlign] = useState("center");
 
+  const [printerOffsetX, setPrinterOffsetX] = useState(0);
+  const [printerOffsetY, setPrinterOffsetY] = useState(0);
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -564,7 +567,8 @@ export default function App() {
   };
 
   const drawFront = (pdf, pos) => {
-    const { x, y } = pos;
+    const x = pos.x + printerOffsetX / 16;
+    const y = pos.y + printerOffsetY / 16;
 
     const imgRatio = imageMeta.width / imageMeta.height;
     const boxRatio = bookmarkW / bookmarkH;
@@ -901,6 +905,29 @@ export default function App() {
           </label>
 
           <div className={fitMessage.includes("fits") ? "ok-note" : "warn-note"}>{fitMessage}</div>
+
+          <div className="offset-section">
+            <span className="offset-label">Printer alignment offset (1/16" steps)</span>
+            <div className="offset-row">
+              <label className="offset-axis-label">
+                Left / Right
+                <div className="offset-controls">
+                  <button type="button" className="toolbar-button" onClick={() => setPrinterOffsetX((v) => v - 1)}>◀</button>
+                  <span className="offset-value">{printerOffsetX > 0 ? `+${printerOffsetX}` : printerOffsetX}/16"</span>
+                  <button type="button" className="toolbar-button" onClick={() => setPrinterOffsetX((v) => v + 1)}>▶</button>
+                </div>
+              </label>
+              <label className="offset-axis-label">
+                Up / Down
+                <div className="offset-controls">
+                  <button type="button" className="toolbar-button" onClick={() => setPrinterOffsetY((v) => v - 1)}>▲</button>
+                  <span className="offset-value">{printerOffsetY > 0 ? `+${printerOffsetY}` : printerOffsetY}/16"</span>
+                  <button type="button" className="toolbar-button" onClick={() => setPrinterOffsetY((v) => v + 1)}>▼</button>
+                </div>
+              </label>
+            </div>
+            <p className="offset-hint">Nudges the front image only. Start at +1 right, +1 up if the front is too far left/down.</p>
+          </div>
 
           <button className="primary-button" onClick={generatePdf} disabled={isGenerating}>
             {isGenerating ? "Generating..." : "Generate Double-Sided PDF"}
