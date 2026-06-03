@@ -112,6 +112,13 @@ body::after {
   justify-content: flex-end;
 }
 
+.ratio-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .hero {
   border: 1px solid var(--line);
   background: linear-gradient(110deg, rgba(255, 255, 255, 0.96), rgba(241, 243, 255, 0.94));

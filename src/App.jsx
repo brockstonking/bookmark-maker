@@ -602,6 +602,10 @@ export default function App() {
   const [pendingImageDataUrl, setPendingImageDataUrl] = useState("");
   const [pendingImageMeta, setPendingImageMeta] = useState(null);
   const [cropAspect, setCropAspect] = useState(2 / 5.5);
+  const [autoCropAspect, setAutoCropAspect] = useState(2 / 5.5);
+  const [cropRatioMode, setCropRatioMode] = useState("auto");
+  const [customRatioW, setCustomRatioW] = useState(2);
+  const [customRatioH, setCustomRatioH] = useState(5.5);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [initialCropPixels, setInitialCropPixels] = useState(null);
@@ -726,7 +730,11 @@ export default function App() {
       setPendingImageMeta(dimensions);
 
       const aspect = Math.max(0.05, detected.width / detected.height);
+      setAutoCropAspect(aspect);
       setCropAspect(aspect);
+      setCropRatioMode("auto");
+      setCustomRatioW(Number(aspect.toFixed(3)));
+      setCustomRatioH(1);
       setInitialCropPixels(detected);
       setSelectedCropPixels(detected);
       setCrop({ x: 0, y: 0 });
@@ -741,6 +749,38 @@ export default function App() {
   const handleCropComplete = (_, croppedAreaPixels) => {
     setSelectedCropPixels(croppedAreaPixels);
   };
+
+  const handleCropRatioModeChange = (mode) => {
+    setCropRatioMode(mode);
+    if (mode === "auto") {
+      setCropAspect(autoCropAspect);
+      return;
+    }
+    if (mode === "bookmark") {
+      setCropAspect(2 / 5.5);
+      return;
+    }
+    if (mode === "square") {
+      setCropAspect(1);
+      return;
+    }
+    if (mode === "portrait4x5") {
+      setCropAspect(4 / 5);
+      return;
+    }
+    if (mode === "custom") {
+      const w = Math.max(0.1, Number(customRatioW) || 1);
+      const h = Math.max(0.1, Number(customRatioH) || 1);
+      setCropAspect(w / h);
+    }
+  };
+
+  useEffect(() => {
+    if (cropRatioMode !== "custom") return;
+    const w = Math.max(0.1, Number(customRatioW) || 1);
+    const h = Math.max(0.1, Number(customRatioH) || 1);
+    setCropAspect(w / h);
+  }, [customRatioW, customRatioH, cropRatioMode]);
 
   const confirmCropSelection = async () => {
     if (!pendingImageDataUrl || !selectedCropPixels) {
@@ -1004,6 +1044,43 @@ export default function App() {
                 objectFit="contain"
               />
             </div>
+
+            <label>
+              Crop ratio
+              <select value={cropRatioMode} onChange={(e) => handleCropRatioModeChange(e.target.value)}>
+                <option value="auto">Auto detected</option>
+                <option value="bookmark">Bookmark 2:5.5</option>
+                <option value="portrait4x5">Portrait 4:5</option>
+                <option value="square">Square 1:1</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+
+            {cropRatioMode === "custom" ? (
+              <div className="ratio-grid">
+                <label>
+                  Ratio width
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={customRatioW}
+                    onChange={(e) => setCustomRatioW(Number(e.target.value))}
+                  />
+                </label>
+                <label>
+                  Ratio height
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={customRatioH}
+                    onChange={(e) => setCustomRatioH(Number(e.target.value))}
+                  />
+                </label>
+              </div>
+            ) : null}
+
             <label>
               Zoom ({zoom.toFixed(2)}x)
               <input
