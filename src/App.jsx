@@ -567,8 +567,8 @@ export default function App() {
   };
 
   const drawFront = (pdf, pos) => {
-    const x = pos.x + printerOffsetX / 16;
-    const y = pos.y + printerOffsetY / 16;
+    const x = pos.x + printerOffsetX / 32;
+    const y = pos.y + printerOffsetY / 32;
 
     const imgRatio = imageMeta.width / imageMeta.height;
     const boxRatio = bookmarkW / bookmarkH;
@@ -913,7 +913,7 @@ export default function App() {
                 Left / Right
                 <div className="offset-controls">
                   <button type="button" className="toolbar-button" onClick={() => setPrinterOffsetX((v) => v - 1)}>◀</button>
-                  <span className="offset-value">{printerOffsetX > 0 ? `+${printerOffsetX}` : printerOffsetX}/16"</span>
+                  <span className="offset-value">{printerOffsetX > 0 ? `+${printerOffsetX}` : printerOffsetX}/32"</span>
                   <button type="button" className="toolbar-button" onClick={() => setPrinterOffsetX((v) => v + 1)}>▶</button>
                 </div>
               </label>
@@ -921,12 +921,12 @@ export default function App() {
                 Up / Down
                 <div className="offset-controls">
                   <button type="button" className="toolbar-button" onClick={() => setPrinterOffsetY((v) => v - 1)}>▲</button>
-                  <span className="offset-value">{printerOffsetY > 0 ? `+${printerOffsetY}` : printerOffsetY}/16"</span>
+                  <span className="offset-value">{printerOffsetY > 0 ? `+${printerOffsetY}` : printerOffsetY}/32"</span>
                   <button type="button" className="toolbar-button" onClick={() => setPrinterOffsetY((v) => v + 1)}>▼</button>
                 </div>
               </label>
             </div>
-            <p className="offset-hint">Nudges the front image only. Start at +1 right, +1 up if the front is too far left/down.</p>
+            <p className="offset-hint">Nudges the front image only. Each step is 1/32".</p>
           </div>
 
           <button className="primary-button" onClick={generatePdf} disabled={isGenerating}>
