@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { useEffect, useMemo, useRef, useState } from "react";
+import templeBackImage from "../assets/images/rexburg_temple_lds-cropped.jpg";
 
 const LETTER_WIDTH = 11;
 const LETTER_HEIGHT = 8.5;
@@ -395,7 +396,9 @@ function suggestLyricsFontSize({
     const px = pt * 4;
     const lineH = px * 1.3;
     const maxLines = Math.max(1, Math.floor(lyricsAvailH / lineH));
-    const rawLines = wrapStyledSegments(ctx, segments, textW, maxLines, px, fontFamily);
+    const rawAllLines = wrapStyledSegments(ctx, segments, textW, Number.MAX_SAFE_INTEGER, px, fontFamily);
+    const overflowLines = Math.max(0, rawAllLines.length - maxLines);
+    const rawLines = rawAllLines.slice(0, maxLines);
     const lines = rebalanceSingleWordLines(rawLines, textW, ctx, px, fontFamily);
 
     const usedH = lines.length * lineH;
@@ -404,7 +407,8 @@ function suggestLyricsFontSize({
 
     const fillPenalty = Math.abs(fill - targetFill);
     const orphanPenalty = orphanCount * 0.5;
-    const score = fillPenalty + orphanPenalty;
+    const overflowPenalty = overflowLines * 2.5;
+    const score = fillPenalty + orphanPenalty + overflowPenalty;
 
     if (score < bestScore) {
       bestScore = score;
@@ -419,7 +423,6 @@ export default function App() {
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [imageMeta, setImageMeta] = useState(null);
   const [backColorHex, setBackColorHex] = useState("#FFFFFF");
-  const [backImageDataUrl, setBackImageDataUrl] = useState("");
   const [backImageElement, setBackImageElement] = useState(null);
   const [songTitle, setSongTitle] = useState("");
   const [titleFont, setTitleFont] = useState("Allura");
@@ -440,6 +443,25 @@ export default function App() {
       lyricsEditorRef.current.innerHTML = lyricsHtml;
     }
   }, [lyricsHtml]);
+
+  useEffect(() => {
+    let active = true;
+    loadHtmlImage(templeBackImage)
+      .then((img) => {
+        if (active) {
+          setBackImageElement(img);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setBackImageElement(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const aspectRatio = imageMeta ? imageMeta.height / imageMeta.width : FALLBACK_ASPECT_RATIO;
   const effectiveBackColor = normalizeHexColor(backColorHex) || "#FFFFFF";
@@ -480,7 +502,7 @@ export default function App() {
       titleBlockH = fitted.sizePx * 0.86 + fitted.sizePx * 0.08;
     }
 
-    const decorativeReserved = backImageDataUrl ? canvas.height * 0.28 : 0;
+    const decorativeReserved = backImageElement ? canvas.height * 0.25 : 0;
     const lyricsAvailH = Math.max(0, textH - titleBlockH - decorativeReserved);
     const family = '"Cormorant Garamond", "EB Garamond", "Cormorant", serif';
     const suggestion = suggestLyricsFontSize({
@@ -490,11 +512,11 @@ export default function App() {
       lyricsAvailH,
       segments,
       fontFamily: family,
-      targetFill: 0.75,
+      targetFill: 0.85,
       ctx
     });
     setSuggestedFontSize(suggestion);
-  }, [lyricsHtml, bookmarkW, bookmarkH, songTitle, titleSize, titleFont, backImageDataUrl, fontSize]);
+  }, [lyricsHtml, bookmarkW, bookmarkH, songTitle, titleSize, titleFont, backImageElement, fontSize]);
 
   const handleImageUpload = async (event) => {
     setError("");
@@ -514,27 +536,6 @@ export default function App() {
       setImageMeta(dimensions);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load uploaded image.");
-    }
-  };
-
-  const handleBackImageUpload = async (event) => {
-    setError("");
-    setMessage("");
-
-    const file = event.target.files?.[0];
-    if (!file) {
-      setBackImageDataUrl("");
-      setBackImageElement(null);
-      return;
-    }
-
-    try {
-      const dataUrl = await imageToDataUrl(file);
-      const imageObj = await loadHtmlImage(dataUrl);
-      setBackImageDataUrl(dataUrl);
-      setBackImageElement(imageObj);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load back image.");
     }
   };
 
@@ -593,8 +594,8 @@ export default function App() {
     ctx.fillStyle = effectiveBackColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const bottomImageHeight = Math.round(canvas.height * 0.25);
-    if (backImageDataUrl && backImageElement && bottomImageHeight > 0) {
+    const bottomImageHeight = Math.round(canvas.height * 0.2);
+    if (backImageElement && bottomImageHeight > 0) {
       const destX = 0;
       const destY = canvas.height - bottomImageHeight;
       const destW = canvas.width;
@@ -624,13 +625,14 @@ export default function App() {
       ctx.drawImage(backImageElement, drawX, drawY, drawW, drawH);
       ctx.restore();
 
-      const blendTop = Math.max(destY, Math.round(canvas.height * 0.8));
-      const blendBottom = destY + destH;
+      const seamFadeHeight = Math.round(canvas.height * 0.08);
+      const blendTop = Math.max(0, destY - seamFadeHeight);
+      const blendBottom = Math.min(canvas.height, destY + seamFadeHeight);
       const gradient = ctx.createLinearGradient(0, blendTop, 0, blendBottom);
-      gradient.addColorStop(0, hexToRgba(effectiveBackColor, 0.78));
-      gradient.addColorStop(0.22, hexToRgba(effectiveBackColor, 0.58));
-      gradient.addColorStop(0.52, hexToRgba(effectiveBackColor, 0.32));
-      gradient.addColorStop(0.8, hexToRgba(effectiveBackColor, 0.12));
+      gradient.addColorStop(0, hexToRgba(effectiveBackColor, 1));
+      gradient.addColorStop(0.38, hexToRgba(effectiveBackColor, 0.88));
+      gradient.addColorStop(0.65, hexToRgba(effectiveBackColor, 0.46));
+      gradient.addColorStop(0.85, hexToRgba(effectiveBackColor, 0.16));
       gradient.addColorStop(1, hexToRgba(effectiveBackColor, 0));
       ctx.fillStyle = gradient;
       ctx.fillRect(0, blendTop, canvas.width, blendBottom - blendTop);
@@ -652,8 +654,7 @@ export default function App() {
       titleBlockH = titleLineH + titleGap;
     }
 
-    // Lyrics are rendered above decorative layers, so no reserved exclusion zone is needed.
-    const decorativeReserved = 0;
+    const decorativeReserved = backImageElement ? canvas.height * 0.25 : 0;
     const lyricsStartY = pad + titleBlockH;
     const lyricsAvailH = Math.max(0, textH - titleBlockH - decorativeReserved);
     const lineH = lyricsPx * 1.3;
@@ -780,17 +781,14 @@ export default function App() {
             </div>
           </label>
 
-          <label>
-            Back side bottom image (optional, fills bottom 25%)
-            <input type="file" accept="image/png,image/jpeg" onChange={handleBackImageUpload} />
-          </label>
-
           <div className="info-card">
             Bookmark size is auto-maximized for 4 across with 0.5 in spacing and edge clearance.
             <br />
             Current width: <strong>{bookmarkW.toFixed(2)} in</strong>
             <br />
             Current height: <strong>{bookmarkH.toFixed(2)} in</strong>
+            <br />
+            Fixed temple image fills bottom 20% with soft seam fade.
           </div>
 
           <label>
@@ -851,7 +849,7 @@ export default function App() {
           </label>
 
           <div className="info-card">
-            Suggested lyrics size for nicer wrapping and ~75% vertical fill: <strong>{suggestedFontSize.toFixed(2)} pt</strong>
+            Suggested lyrics size for nicer wrapping and ~85% vertical fill: <strong>{suggestedFontSize.toFixed(2)} pt</strong>
             <br />
             <button type="button" className="toolbar-button" onClick={() => setFontSize(suggestedFontSize)}>
               Apply Suggested Size
