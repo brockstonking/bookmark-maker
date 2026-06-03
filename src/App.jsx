@@ -596,7 +596,7 @@ export default function App() {
 
     const bottomImageHeight = Math.round(canvas.height * 0.25);
     if (backImageElement && bottomImageHeight > 0) {
-      const fullImageTop = Math.round(canvas.height * 0.68);
+      const fullImageTop = Math.round(canvas.height * 0.645);
       const fullImageBottom = canvas.height;
       const fullImageH = fullImageBottom - fullImageTop;
       const fullImageW = canvas.width;
