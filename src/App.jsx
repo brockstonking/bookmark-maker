@@ -85,13 +85,13 @@ function computeSingleRowPositions(bookmarkW, bookmarkH) {
 async function ensureFontsLoaded(titleSize, lyricSize) {
   if (!document?.fonts?.load) return;
   await Promise.all([
-    document.fonts.load(`${titleSize * 4}px "Cormorant Garamond"`),
+    document.fonts.load(`${titleSize * 4}px "Allura"`),
     document.fonts.load(`${lyricSize * 4}px "Cormorant Garamond"`)
   ]);
 }
 
 function fitSingleLineTitle(ctx, title, maxWidth, startPx) {
-  const family = '"Cormorant Garamond", "EB Garamond", serif';
+  const family = '"Allura", "Alex Brush", "Great Vibes", cursive';
   const minPx = 34;
   let sizePx = startPx;
   let content = title;
@@ -214,8 +214,8 @@ export default function App() {
     let titleBlockH = 0;
     if (songTitle.trim()) {
       fittedTitle = fitSingleLineTitle(ctx, songTitle.trim(), textW, titlePx);
-      const titleLineH = fittedTitle.sizePx * 1.05;
-      const titleGap = fittedTitle.sizePx * 0.3;
+      const titleLineH = fittedTitle.sizePx * 0.86;
+      const titleGap = fittedTitle.sizePx * 0.08;
       titleBlockH = titleLineH + titleGap;
     }
 
@@ -230,10 +230,10 @@ export default function App() {
 
     ctx.fillStyle = "#111111";
     if (songTitle.trim()) {
-      ctx.font = `600 ${fittedTitle.sizePx}px \"Cormorant Garamond\", \"EB Garamond\", serif`;
+      ctx.font = `400 ${fittedTitle.sizePx}px \"Allura\", \"Alex Brush\", \"Great Vibes\", cursive`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillText(fittedTitle.text, canvas.width / 2, pad);
+      ctx.fillText(fittedTitle.text, canvas.width / 2, pad - fittedTitle.sizePx * 0.02);
     }
 
     if (lines.length === 0) {
