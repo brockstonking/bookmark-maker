@@ -3,7 +3,9 @@ import { useMemo, useState } from "react";
 
 const LETTER_WIDTH = 11;
 const LETTER_HEIGHT = 8.5;
-const BOOKMARK_COUNT = 5;
+const BOOKMARK_COUNT = 4;
+const EDGE_GAP = 0.5;
+const INTERVAL_GAP = 0.5;
 const FALLBACK_ASPECT_RATIO = 5.5 / 2; // Height / width when no image has been uploaded yet.
 
 function wrapLyrics(pdf, text, maxWidth, maxLines) {
@@ -50,37 +52,49 @@ function loadImageDimensions(dataUrl) {
   });
 }
 
+function computeMaxBookmarkSize(aspectRatio) {
+  const maxWidthFromHorizontal =
+    (LETTER_WIDTH - 2 * EDGE_GAP - (BOOKMARK_COUNT - 1) * INTERVAL_GAP) / BOOKMARK_COUNT;
+  const maxHeightFromVertical = LETTER_HEIGHT - 2 * EDGE_GAP;
+  const maxWidthFromVertical = maxHeightFromVertical / aspectRatio;
+  const width = Math.min(maxWidthFromHorizontal, maxWidthFromVertical);
+  const height = width * aspectRatio;
+
+  if (width <= 0 || height <= 0) {
+    throw new Error("Could not compute a valid bookmark size.");
+  }
+
+  return { width, height };
+}
+
 function computeSingleRowPositions(bookmarkW, bookmarkH) {
-  const sidePadding = 0.28;
-  const topBottomPadding = 0.25;
-  const footerReserved = 0.35;
-
-  const availW = LETTER_WIDTH - sidePadding * 2;
-  const gapX = (availW - BOOKMARK_COUNT * bookmarkW) / (BOOKMARK_COUNT - 1);
-
-  if (gapX < 0) {
-    throw new Error("Width is too large to place 5 bookmarks side-by-side on Letter landscape.");
-  }
-
-  const maxBookmarkH = LETTER_HEIGHT - topBottomPadding * 2 - footerReserved;
-  if (bookmarkH > maxBookmarkH) {
-    throw new Error("Image aspect ratio plus width makes bookmarks too tall for the page.");
-  }
-
-  const rowW = BOOKMARK_COUNT * bookmarkW + (BOOKMARK_COUNT - 1) * gapX;
+  const rowW = BOOKMARK_COUNT * bookmarkW + (BOOKMARK_COUNT - 1) * INTERVAL_GAP;
   const startX = (LETTER_WIDTH - rowW) / 2;
-  const y = (LETTER_HEIGHT - footerReserved - bookmarkH) / 2;
+  const y = (LETTER_HEIGHT - bookmarkH) / 2;
+
+  if (startX < EDGE_GAP - 0.001 || y < EDGE_GAP - 0.001 || LETTER_HEIGHT - (y + bookmarkH) < EDGE_GAP - 0.001) {
+    throw new Error("Layout does not satisfy the 0.5 inch edge spacing requirement.");
+  }
 
   return Array.from({ length: BOOKMARK_COUNT }, (_, index) => ({
-    x: startX + index * (bookmarkW + gapX),
+    x: startX + index * (bookmarkW + INTERVAL_GAP),
     y
   }));
 }
 
+async function ensureFontsLoaded(titleSize, lyricSize) {
+  if (!document?.fonts?.load) return;
+  await Promise.all([
+    document.fonts.load(`${titleSize * 4}px "Great Vibes"`),
+    document.fonts.load(`${lyricSize * 4}px "Cormorant Garamond"`)
+  ]);
+}
+
 export default function App() {
-  const [bookmarkW, setBookmarkW] = useState(1.8);
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [imageMeta, setImageMeta] = useState(null);
+  const [songTitle, setSongTitle] = useState("");
+  const [titleSize, setTitleSize] = useState(20);
   const [lyrics, setLyrics] = useState("");
   const [fontSize, setFontSize] = useState(11);
   const [textAlign, setTextAlign] = useState("center");
@@ -90,12 +104,14 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const aspectRatio = imageMeta ? imageMeta.height / imageMeta.width : FALLBACK_ASPECT_RATIO;
-  const bookmarkH = bookmarkW * aspectRatio;
+  const bookmarkSize = useMemo(() => computeMaxBookmarkSize(aspectRatio), [aspectRatio]);
+  const bookmarkW = bookmarkSize.width;
+  const bookmarkH = bookmarkSize.height;
 
   const fitMessage = useMemo(() => {
     try {
       computeSingleRowPositions(bookmarkW, bookmarkH);
-      return "Layout fits: 5 bookmarks in one side-by-side row.";
+      return "Layout fits: 4 bookmarks in one row with 0.5 in spacing from edges.";
     } catch (err) {
       return err instanceof Error ? err.message : "Layout is invalid.";
     }
@@ -125,31 +141,21 @@ export default function App() {
   const drawFront = (pdf, pos) => {
     const { x, y } = pos;
 
-    pdf.setDrawColor(0, 0, 0);
-    pdf.setLineWidth(0.01);
-    pdf.rect(x, y, bookmarkW, bookmarkH);
-
-    const pad = 0.08;
-    const contentX = x + pad;
-    const contentY = y + pad;
-    const contentW = bookmarkW - pad * 2;
-    const contentH = bookmarkH - pad * 2;
-
     const imgRatio = imageMeta.width / imageMeta.height;
-    const boxRatio = contentW / contentH;
+    const boxRatio = bookmarkW / bookmarkH;
 
     let drawW;
     let drawH;
     if (imgRatio > boxRatio) {
-      drawW = contentW;
+      drawW = bookmarkW;
       drawH = drawW / imgRatio;
     } else {
-      drawH = contentH;
+      drawH = bookmarkH;
       drawW = drawH * imgRatio;
     }
 
-    const drawX = contentX + (contentW - drawW) / 2;
-    const drawY = contentY + (contentH - drawH) / 2;
+    const drawX = x + (bookmarkW - drawW) / 2;
+    const drawY = y + (bookmarkH - drawH) / 2;
     const format = imageDataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
     pdf.addImage(imageDataUrl, format, drawX, drawY, drawW, drawH);
   };
@@ -157,38 +163,73 @@ export default function App() {
   const drawBack = (pdf, pos) => {
     const { x, y } = pos;
 
-    pdf.setDrawColor(0, 0, 0);
-    pdf.setLineWidth(0.01);
-    pdf.rect(x, y, bookmarkW, bookmarkH);
+    const canvasScale = 300;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bookmarkW * canvasScale));
+    canvas.height = Math.max(1, Math.round(bookmarkH * canvasScale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Could not create canvas for back text rendering.");
+    }
 
-    const pad = 0.12;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const pad = 0.12 * canvasScale;
     const textX = x + pad;
     const textY = y + pad;
-    const textW = bookmarkW - pad * 2;
-    const textH = bookmarkH - pad * 2;
+    const textW = canvas.width - pad * 2;
+    const textH = canvas.height - pad * 2;
 
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(fontSize);
+    const titlePx = titleSize * 4;
+    const lyricsPx = fontSize * 4;
 
-    const lineH = (fontSize / 72) * 1.3;
-    const maxLines = Math.max(1, Math.floor(textH / lineH));
-    const lines = wrapLyrics(pdf, lyrics, textW, maxLines);
+    const titleLineH = titlePx * 1.1;
+    const titleGap = songTitle.trim() ? titlePx * 0.35 : 0;
+    const titleBlockH = songTitle.trim() ? titleLineH + titleGap : 0;
+
+    const lyricsStartY = pad + titleBlockH;
+    const lyricsAvailH = textH - titleBlockH;
+
+    const lyricPdf = new jsPDF({ unit: "in", format: "letter" });
+    lyricPdf.setFont("times", "normal");
+    lyricPdf.setFontSize(fontSize);
+    const maxLyricLines = Math.max(1, Math.floor(lyricsAvailH / (lyricsPx * 1.3)));
+    const lines = wrapLyrics(lyricPdf, lyrics, textW / canvasScale, maxLyricLines);
+
+    ctx.fillStyle = "#111111";
+    if (songTitle.trim()) {
+      ctx.font = `600 ${titlePx}px \"Great Vibes\", \"Allura\", \"Alex Brush\", cursive`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(songTitle.trim(), canvas.width / 2, pad);
+    }
 
     if (lines.length === 0) {
+      const png = canvas.toDataURL("image/png");
+      pdf.addImage(png, "PNG", x, y, bookmarkW, bookmarkH);
       return;
     }
 
+    ctx.font = `400 ${lyricsPx}px \"Cormorant Garamond\", \"EB Garamond\", \"Cormorant\", serif`;
+    ctx.textBaseline = "top";
+    const lineH = lyricsPx * 1.3;
     const blockH = lines.length * lineH;
-    let cursorY = textY + Math.max(0, (textH - blockH) / 2) + lineH * 0.85;
+    let cursorY = lyricsStartY + Math.max(0, (lyricsAvailH - blockH) / 2);
 
     for (const line of lines) {
       if (textAlign === "left") {
-        pdf.text(line, textX, cursorY, { align: "left" });
+        ctx.textAlign = "left";
+        ctx.fillText(line, pad, cursorY);
       } else {
-        pdf.text(line, textX + textW / 2, cursorY, { align: "center" });
+        ctx.textAlign = "center";
+        ctx.fillText(line, canvas.width / 2, cursorY);
       }
       cursorY += lineH;
     }
+
+    const backPng = canvas.toDataURL("image/png");
+    pdf.addImage(backPng, "PNG", x, y, bookmarkW, bookmarkH);
   };
 
   const drawFooter = (pdf) => {
@@ -197,7 +238,7 @@ export default function App() {
     pdf.text(
       "Print double-sided, flip on short edge. Use cardstock for best results.",
       LETTER_WIDTH / 2,
-      LETTER_HEIGHT - 0.12,
+      LETTER_HEIGHT - 0.18,
       { align: "center" }
     );
   };
@@ -213,6 +254,7 @@ export default function App() {
 
     setIsGenerating(true);
     try {
+      await ensureFontsLoaded(titleSize, fontSize);
       const positions = computeSingleRowPositions(bookmarkW, bookmarkH);
 
       const pdf = new jsPDF({
@@ -245,7 +287,7 @@ export default function App() {
     <div className="page-shell">
       <header className="hero">
         <h1>🔖 Bookmark Maker - Double-Sided Song Lyrics</h1>
-        <p>5 bookmarks side-by-side. Upload front image, paste lyrics, set width/font/alignment, export PDF.</p>
+        <p>4 bookmarks side-by-side. Image fills the entire front. Back is song title + lyrics, perfectly aligned.</p>
       </header>
 
       <main className="layout-grid single-column">
@@ -255,23 +297,34 @@ export default function App() {
             <input type="file" accept="image/png,image/jpeg" onChange={handleImageUpload} />
           </label>
 
-          <label>
-            Bookmark width ({bookmarkW.toFixed(2)} in)
-            <input
-              type="range"
-              min="1.2"
-              max="2.4"
-              step="0.05"
-              value={bookmarkW}
-              onChange={(e) => setBookmarkW(Number(e.target.value))}
-            />
-          </label>
-
           <div className="info-card">
-            Height is locked to uploaded image aspect ratio.
+            Bookmark size is auto-maximized for 4 across with 0.5 in spacing and edge clearance.
+            <br />
+            Current width: <strong>{bookmarkW.toFixed(2)} in</strong>
             <br />
             Current height: <strong>{bookmarkH.toFixed(2)} in</strong>
           </div>
+
+          <label>
+            Song title
+            <input
+              type="text"
+              value={songTitle}
+              onChange={(e) => setSongTitle(e.target.value)}
+              placeholder="Enter song title"
+            />
+          </label>
+
+          <label>
+            Song title font size ({titleSize} pt)
+            <input
+              type="range"
+              min="14"
+              max="36"
+              value={titleSize}
+              onChange={(e) => setTitleSize(Number(e.target.value))}
+            />
+          </label>
 
           <label>
             Lyrics
