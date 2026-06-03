@@ -8,6 +8,7 @@ const BOOKMARK_COUNT = 4;
 const EDGE_GAP = 0.5;
 const INTERVAL_GAP = 0.5;
 const FALLBACK_ASPECT_RATIO = 5.5 / 2; // Height / width when no image has been uploaded yet.
+const BACK_TEXT_TOP_INSET = 0.35;
 
 function imageToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -492,8 +493,9 @@ export default function App() {
     if (!ctx) return;
 
     const pad = 0.12 * 300;
+    const punchInset = BACK_TEXT_TOP_INSET * 300;
     const textW = canvas.width - pad * 2;
-    const textH = canvas.height - pad * 2;
+    const textH = canvas.height - pad * 2 - punchInset;
     const titlePx = titleSize * 4;
 
     let titleBlockH = 0;
@@ -647,8 +649,9 @@ export default function App() {
     }
 
     const pad = 0.12 * canvasScale;
+    const punchInset = BACK_TEXT_TOP_INSET * canvasScale;
     const textW = canvas.width - pad * 2;
-    const textH = canvas.height - pad * 2;
+    const textH = canvas.height - pad * 2 - punchInset;
 
     const titlePx = titleSize * 4;
     const lyricsPx = fontSize * 4;
@@ -663,7 +666,8 @@ export default function App() {
     }
 
     const decorativeReserved = backImageElement ? canvas.height * 0.25 : 0;
-    const lyricsStartY = pad + titleBlockH;
+    const textTopY = pad + punchInset;
+    const lyricsStartY = textTopY + titleBlockH;
     const lyricsAvailH = Math.max(0, textH - titleBlockH - decorativeReserved);
     const lineH = lyricsPx * 1.3;
     const maxLyricLines = Math.max(1, Math.floor(lyricsAvailH / lineH));
@@ -681,7 +685,7 @@ export default function App() {
       ctx.font = `400 ${fittedTitle.sizePx}px ${titleFamily}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.fillText(fittedTitle.text, canvas.width / 2, pad - fittedTitle.sizePx * 0.02);
+      ctx.fillText(fittedTitle.text, canvas.width / 2, textTopY - fittedTitle.sizePx * 0.02);
     }
 
     if (lines.length > 0) {
