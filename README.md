@@ -42,11 +42,26 @@ If you get `DNS_PROBE_FINISHED_NXDOMAIN` right after deploy:
 Hugging Face Spaces runs Streamlit apps directly and gives a stable public URL.
 
 1. Create a new Space at https://huggingface.co/new-space
-2. Choose **Streamlit** SDK.
+2. Choose **Docker** SDK (this app is Streamlit, and Docker is the reliable way to run it on HF).
 3. Connect this GitHub repository or upload these files.
 4. Ensure `app.py` and `requirements.txt` are in the Space root.
 5. Spaces builds automatically and provides a URL like:
 	`https://huggingface.co/spaces/<username>/bookmark-maker`
+
+### Auto-sync this GitHub repo to your HF Space
+
+This repo includes a GitHub Actions workflow at `.github/workflows/sync-to-huggingface-space.yml`.
+
+Set these once in your GitHub repository settings:
+
+1. Create a Hugging Face token at https://huggingface.co/settings/tokens with **write** access.
+2. In GitHub repo settings, add secret `HF_TOKEN` with that token value.
+3. In GitHub repo settings, add variable `HF_SPACE_ID` with value like `LoneStormRider/bookmark-maker-lyrics`.
+4. Push to `main` (or run the workflow manually from Actions).
+
+After sync, your live app URL is:
+
+`https://<your-space-subdomain>.hf.space`
 
 ## Alternative Deployment 2: Render (Docker)
 
