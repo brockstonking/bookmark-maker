@@ -907,7 +907,7 @@ export default function App() {
           <div className={fitMessage.includes("fits") ? "ok-note" : "warn-note"}>{fitMessage}</div>
 
           <div className="offset-section">
-            <span className="offset-label">Printer alignment offset (1/16" steps)</span>
+            <span className="offset-label">Printer alignment offset (1/32" steps)</span>
             <div className="offset-row">
               <label className="offset-axis-label">
                 Left / Right
