@@ -168,6 +168,25 @@ textarea {
   color: #7f7a97;
 }
 
+.hex-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.hex-row input[type="text"] {
+  margin-top: 0;
+}
+
+.hex-row input[type="color"] {
+  width: 56px;
+  height: 42px;
+  padding: 4px;
+  margin-top: 0;
+}
+
 .checkbox-row {
   display: flex;
   align-items: center;

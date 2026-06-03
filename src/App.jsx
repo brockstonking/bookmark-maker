@@ -28,6 +28,30 @@ function loadImageDimensions(dataUrl) {
   });
 }
 
+function normalizeHexColor(value) {
+  const raw = (value || "").trim();
+  const shortMatch = raw.match(/^#([0-9a-fA-F]{3})$/);
+  if (shortMatch) {
+    const [r, g, b] = shortMatch[1].split("");
+    return `#${r}${r}${g}${g}${b}${b}`.toUpperCase();
+  }
+
+  const longMatch = raw.match(/^#([0-9a-fA-F]{6})$/);
+  if (longMatch) {
+    return `#${longMatch[1].toUpperCase()}`;
+  }
+
+  return null;
+}
+
+function hexToRgba(hex, alpha) {
+  const normalized = normalizeHexColor(hex) || "#FFFFFF";
+  const r = parseInt(normalized.slice(1, 3), 16);
+  const g = parseInt(normalized.slice(3, 5), 16);
+  const b = parseInt(normalized.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function computeMaxBookmarkSize(aspectRatio) {
   const maxWidthFromHorizontal =
     (LETTER_WIDTH - 2 * EDGE_GAP - (BOOKMARK_COUNT - 1) * INTERVAL_GAP) / BOOKMARK_COUNT;
@@ -241,6 +265,9 @@ function wrapStyledSegments(ctx, segments, maxWidth, maxLines, fontPx, fontFamil
 export default function App() {
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [imageMeta, setImageMeta] = useState(null);
+  const [backColorHex, setBackColorHex] = useState("#FFFFFF");
+  const [backImageDataUrl, setBackImageDataUrl] = useState("");
+  const [backImageMeta, setBackImageMeta] = useState(null);
   const [songTitle, setSongTitle] = useState("");
   const [titleFont, setTitleFont] = useState("Allura");
   const [titleSize, setTitleSize] = useState(20);
@@ -261,6 +288,7 @@ export default function App() {
   }, [lyricsHtml]);
 
   const aspectRatio = imageMeta ? imageMeta.height / imageMeta.width : FALLBACK_ASPECT_RATIO;
+  const effectiveBackColor = normalizeHexColor(backColorHex) || "#FFFFFF";
   const bookmarkSize = useMemo(() => computeMaxBookmarkSize(aspectRatio), [aspectRatio]);
   const bookmarkW = bookmarkSize.width;
   const bookmarkH = bookmarkSize.height;
@@ -292,6 +320,27 @@ export default function App() {
       setImageMeta(dimensions);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load uploaded image.");
+    }
+  };
+
+  const handleBackImageUpload = async (event) => {
+    setError("");
+    setMessage("");
+
+    const file = event.target.files?.[0];
+    if (!file) {
+      setBackImageDataUrl("");
+      setBackImageMeta(null);
+      return;
+    }
+
+    try {
+      const dataUrl = await imageToDataUrl(file);
+      const dimensions = await loadImageDimensions(dataUrl);
+      setBackImageDataUrl(dataUrl);
+      setBackImageMeta(dimensions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load back image.");
     }
   };
 
@@ -347,8 +396,45 @@ export default function App() {
       throw new Error("Could not create canvas for back text rendering.");
     }
 
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = effectiveBackColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const bottomImageHeight = Math.round(canvas.height * 0.25);
+    if (backImageDataUrl && backImageMeta && bottomImageHeight > 0) {
+      const destX = 0;
+      const destY = canvas.height - bottomImageHeight;
+      const destW = canvas.width;
+      const destH = bottomImageHeight;
+
+      const imgRatio = backImageMeta.width / backImageMeta.height;
+      const boxRatio = destW / destH;
+      let drawW;
+      let drawH;
+
+      if (imgRatio > boxRatio) {
+        drawH = destH;
+        drawW = drawH * imgRatio;
+      } else {
+        drawW = destW;
+        drawH = drawW / imgRatio;
+      }
+
+      const drawX = destX + (destW - drawW) / 2;
+      const drawY = destY + (destH - drawH) / 2;
+
+      const img = new Image();
+      img.src = backImageDataUrl;
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+
+      const blendHeight = Math.round(canvas.height * 0.12);
+      const blendTop = Math.max(0, destY - blendHeight);
+      const blendBottom = Math.min(canvas.height, destY + blendHeight);
+      const gradient = ctx.createLinearGradient(0, blendTop, 0, blendBottom);
+      gradient.addColorStop(0, hexToRgba(effectiveBackColor, 1));
+      gradient.addColorStop(1, hexToRgba(effectiveBackColor, 0));
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, blendTop, canvas.width, blendBottom - blendTop);
+    }
 
     const pad = 0.12 * canvasScale;
     const textW = canvas.width - pad * 2;
@@ -366,8 +452,9 @@ export default function App() {
       titleBlockH = titleLineH + titleGap;
     }
 
+    const decorativeReserved = backImageDataUrl ? canvas.height * 0.28 : 0;
     const lyricsStartY = pad + titleBlockH;
-    const lyricsAvailH = textH - titleBlockH;
+    const lyricsAvailH = Math.max(0, textH - titleBlockH - decorativeReserved);
     const lineH = lyricsPx * 1.3;
     const maxLyricLines = Math.max(1, Math.floor(lyricsAvailH / lineH));
 
@@ -471,6 +558,29 @@ export default function App() {
           <label>
             Front image (PNG/JPG)
             <input type="file" accept="image/png,image/jpeg" onChange={handleImageUpload} />
+          </label>
+
+          <label>
+            Back side background color (hex)
+            <div className="hex-row">
+              <input
+                type="text"
+                value={backColorHex}
+                onChange={(e) => setBackColorHex(e.target.value)}
+                placeholder="#F5F0FF"
+              />
+              <input
+                type="color"
+                value={effectiveBackColor}
+                onChange={(e) => setBackColorHex(e.target.value.toUpperCase())}
+                aria-label="Pick back side color"
+              />
+            </div>
+          </label>
+
+          <label>
+            Back side bottom image (optional, fills bottom 25%)
+            <input type="file" accept="image/png,image/jpeg" onChange={handleBackImageUpload} />
           </label>
 
           <div className="info-card">
