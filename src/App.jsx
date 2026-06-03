@@ -1,7 +1,5 @@
 import { jsPDF } from "jspdf";
 import { useEffect, useMemo, useRef, useState } from "react";
-import ReactCrop from "react-image-crop";
-import "react-image-crop/dist/ReactCrop.css";
 import templeBackImage from "../assets/images/Rexburg_temple_golden.jpg";
 
 const LETTER_WIDTH = 11;
@@ -38,181 +36,6 @@ function loadHtmlImage(dataUrl) {
     img.onerror = () => reject(new Error("Could not decode uploaded image."));
     img.src = dataUrl;
   });
-}
-
-async function detectAutoCropBox(dataUrl) {
-  const img = await loadHtmlImage(dataUrl);
-
-  const maxDetectSize = 900;
-  const detectScale = Math.min(1, maxDetectSize / Math.max(img.naturalWidth, img.naturalHeight));
-  const detectW = Math.max(1, Math.round(img.naturalWidth * detectScale));
-  const detectH = Math.max(1, Math.round(img.naturalHeight * detectScale));
-
-  const detectCanvas = document.createElement("canvas");
-  detectCanvas.width = detectW;
-  detectCanvas.height = detectH;
-  const dctx = detectCanvas.getContext("2d", { willReadFrequently: true });
-  if (!dctx) {
-    return { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight };
-  }
-
-  dctx.drawImage(img, 0, 0, detectW, detectH);
-  const imageData = dctx.getImageData(0, 0, detectW, detectH);
-  const px = imageData.data;
-
-  const samplePixel = (x, y) => {
-    const i = (y * detectW + x) * 4;
-    return [px[i], px[i + 1], px[i + 2], px[i + 3]];
-  };
-
-  let rSum = 0;
-  let gSum = 0;
-  let bSum = 0;
-  let aSum = 0;
-  let count = 0;
-
-  // Estimate background color from a sparse ring near the outer edges.
-  const inset = Math.max(1, Math.floor(Math.min(detectW, detectH) * 0.015));
-  const xStep = Math.max(2, Math.floor(detectW / 120));
-  const yStep = Math.max(2, Math.floor(detectH / 120));
-
-  for (let x = inset; x < detectW - inset; x += xStep) {
-    const top = samplePixel(x, inset);
-    const bottom = samplePixel(x, detectH - inset - 1);
-    rSum += top[0] + bottom[0];
-    gSum += top[1] + bottom[1];
-    bSum += top[2] + bottom[2];
-    aSum += top[3] + bottom[3];
-    count += 2;
-  }
-  for (let y = inset; y < detectH - inset; y += yStep) {
-    const left = samplePixel(inset, y);
-    const right = samplePixel(detectW - inset - 1, y);
-    rSum += left[0] + right[0];
-    gSum += left[1] + right[1];
-    bSum += left[2] + right[2];
-    aSum += left[3] + right[3];
-    count += 2;
-  }
-
-  if (count === 0) {
-    return { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight };
-  }
-
-  const bgR = rSum / count;
-  const bgG = gSum / count;
-  const bgB = bSum / count;
-  const bgA = aSum / count;
-
-  const visited = new Uint8Array(detectW * detectH);
-  const queue = [];
-  let head = 0;
-
-  const isBackgroundLike = (index) => {
-    const i = index * 4;
-    const dr = Math.abs(px[i] - bgR);
-    const dg = Math.abs(px[i + 1] - bgG);
-    const db = Math.abs(px[i + 2] - bgB);
-    const da = Math.abs(px[i + 3] - bgA);
-    const rgbDiff = dr + dg + db;
-    return rgbDiff <= 82 && da <= 80;
-  };
-
-  const enqueueIfBg = (index) => {
-    if (index < 0 || index >= visited.length) return;
-    if (visited[index]) return;
-    if (!isBackgroundLike(index)) return;
-    visited[index] = 1;
-    queue.push(index);
-  };
-
-  // Flood-fill from all edges to identify contiguous outer background.
-  for (let x = 0; x < detectW; x += 1) {
-    enqueueIfBg(x);
-    enqueueIfBg((detectH - 1) * detectW + x);
-  }
-  for (let y = 0; y < detectH; y += 1) {
-    enqueueIfBg(y * detectW);
-    enqueueIfBg(y * detectW + (detectW - 1));
-  }
-
-  while (head < queue.length) {
-    const index = queue[head++];
-    const x = index % detectW;
-    const y = (index - x) / detectW;
-
-    if (x > 0) enqueueIfBg(index - 1);
-    if (x < detectW - 1) enqueueIfBg(index + 1);
-    if (y > 0) enqueueIfBg(index - detectW);
-    if (y < detectH - 1) enqueueIfBg(index + detectW);
-  }
-
-  let minX = detectW;
-  let minY = detectH;
-  let maxX = -1;
-  let maxY = -1;
-
-  for (let y = 0; y < detectH; y += 1) {
-    for (let x = 0; x < detectW; x += 1) {
-      const idx = y * detectW + x;
-      const alpha = px[idx * 4 + 3];
-      if (!visited[idx] && alpha > 10) {
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-
-  if (maxX < minX || maxY < minY) {
-    return { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight };
-  }
-
-  const boxW = maxX - minX + 1;
-  const boxH = maxY - minY + 1;
-  const areaRatio = (boxW * boxH) / (detectW * detectH);
-
-  // If there is no meaningful border to trim, keep original.
-  if (areaRatio > 0.98) {
-    return { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight };
-  }
-
-  const pad = Math.max(2, Math.floor(Math.min(detectW, detectH) * 0.008));
-  minX = Math.max(0, minX - pad);
-  minY = Math.max(0, minY - pad);
-  maxX = Math.min(detectW - 1, maxX + pad);
-  maxY = Math.min(detectH - 1, maxY + pad);
-
-  const sx = Math.round((minX / detectW) * img.naturalWidth);
-  const sy = Math.round((minY / detectH) * img.naturalHeight);
-  const sw = Math.max(1, Math.round(((maxX - minX + 1) / detectW) * img.naturalWidth));
-  const sh = Math.max(1, Math.round(((maxY - minY + 1) / detectH) * img.naturalHeight));
-
-  return { x: sx, y: sy, width: sw, height: sh };
-}
-
-async function cropImageToDataUrl(sourceDataUrl, cropPixels) {
-  const img = await loadHtmlImage(sourceDataUrl);
-  const safeX = Math.max(0, Math.min(img.naturalWidth - 1, Math.round(cropPixels.x)));
-  const safeY = Math.max(0, Math.min(img.naturalHeight - 1, Math.round(cropPixels.y)));
-  const safeW = Math.max(1, Math.min(img.naturalWidth - safeX, Math.round(cropPixels.width)));
-  const safeH = Math.max(1, Math.min(img.naturalHeight - safeY, Math.round(cropPixels.height)));
-
-  const out = document.createElement("canvas");
-  out.width = safeW;
-  out.height = safeH;
-  const octx = out.getContext("2d");
-  if (!octx) {
-    return { dataUrl: sourceDataUrl, width: img.naturalWidth, height: img.naturalHeight };
-  }
-
-  octx.drawImage(img, safeX, safeY, safeW, safeH, 0, 0, safeW, safeH);
-  return {
-    dataUrl: out.toDataURL("image/jpeg", 0.95),
-    width: safeW,
-    height: safeH
-  };
 }
 
 function normalizeHexColor(value) {
@@ -599,18 +422,6 @@ function suggestLyricsFontSize({
 export default function App() {
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [imageMeta, setImageMeta] = useState(null);
-  const [cropOpen, setCropOpen] = useState(false);
-  const [pendingImageDataUrl, setPendingImageDataUrl] = useState("");
-  const [pendingImageMeta, setPendingImageMeta] = useState(null);
-  const [cropAspect, setCropAspect] = useState(2 / 5.5);
-  const [autoCropAspect, setAutoCropAspect] = useState(2 / 5.5);
-  const [cropRatioMode, setCropRatioMode] = useState("free");
-  const [customRatioW, setCustomRatioW] = useState(2);
-  const [customRatioH, setCustomRatioH] = useState(5.5);
-  const [cropBox, setCropBox] = useState({ unit: "%", x: 10, y: 10, width: 80, height: 80 });
-  const [initialCropPixels, setInitialCropPixels] = useState(null);
-  const [selectedCropPixels, setSelectedCropPixels] = useState(null);
-  const [cropResetKey, setCropResetKey] = useState(0);
   const [backColorHex, setBackColorHex] = useState("#FFFFFF");
   const [backImageElement, setBackImageElement] = useState(null);
   const [songTitle, setSongTitle] = useState("");
@@ -626,7 +437,6 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const lyricsEditorRef = useRef(null);
-  const cropImageRef = useRef(null);
 
   useEffect(() => {
     if (lyricsEditorRef.current && lyricsEditorRef.current.innerHTML !== lyricsHtml) {
@@ -716,119 +526,17 @@ export default function App() {
     if (!file) {
       setImageDataUrl("");
       setImageMeta(null);
-      setPendingImageDataUrl("");
-      setPendingImageMeta(null);
-      setCropOpen(false);
       return;
     }
 
     try {
       const dataUrl = await imageToDataUrl(file);
       const dimensions = await loadImageDimensions(dataUrl);
-      const detected = await detectAutoCropBox(dataUrl);
-
-      setPendingImageDataUrl(dataUrl);
-      setPendingImageMeta(dimensions);
-
-      const aspect = Math.max(0.05, detected.width / detected.height);
-      setAutoCropAspect(aspect);
-      setCropAspect(aspect);
-      setCropRatioMode("free");
-      setCustomRatioW(Number(aspect.toFixed(3)));
-      setCustomRatioH(1);
-      setInitialCropPixels(detected);
-      setSelectedCropPixels(detected);
-      setCropBox({ unit: "%", x: 10, y: 10, width: 80, height: 80 });
-      setCropResetKey((key) => key + 1);
-      setCropOpen(true);
+      setImageDataUrl(dataUrl);
+      setImageMeta(dimensions);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load uploaded image.");
     }
-  };
-
-  const handleCropComplete = (_, croppedAreaPixels) => {
-    if (!cropImageRef.current || !croppedAreaPixels) return;
-    const img = cropImageRef.current;
-    const scaleX = img.naturalWidth / img.width;
-    const scaleY = img.naturalHeight / img.height;
-
-    setSelectedCropPixels({
-      x: croppedAreaPixels.x * scaleX,
-      y: croppedAreaPixels.y * scaleY,
-      width: croppedAreaPixels.width * scaleX,
-      height: croppedAreaPixels.height * scaleY
-    });
-  };
-
-  const handleCropImageLoad = (event) => {
-    const img = event.currentTarget;
-    cropImageRef.current = img;
-
-    if (!initialCropPixels) return;
-
-    const xPct = (initialCropPixels.x / img.naturalWidth) * 100;
-    const yPct = (initialCropPixels.y / img.naturalHeight) * 100;
-    const wPct = (initialCropPixels.width / img.naturalWidth) * 100;
-    const hPct = (initialCropPixels.height / img.naturalHeight) * 100;
-
-    setCropBox({ unit: "%", x: xPct, y: yPct, width: wPct, height: hPct });
-    setSelectedCropPixels(initialCropPixels);
-  };
-
-  const handleCropRatioModeChange = (mode) => {
-    setCropRatioMode(mode);
-    if (mode === "auto") {
-      setCropAspect(autoCropAspect);
-      return;
-    }
-    if (mode === "bookmark") {
-      setCropAspect(2 / 5.5);
-      return;
-    }
-    if (mode === "square") {
-      setCropAspect(1);
-      return;
-    }
-    if (mode === "portrait4x5") {
-      setCropAspect(4 / 5);
-      return;
-    }
-    if (mode === "custom") {
-      const w = Math.max(0.1, Number(customRatioW) || 1);
-      const h = Math.max(0.1, Number(customRatioH) || 1);
-      setCropAspect(w / h);
-    }
-  };
-
-  useEffect(() => {
-    if (cropRatioMode !== "custom") return;
-    const w = Math.max(0.1, Number(customRatioW) || 1);
-    const h = Math.max(0.1, Number(customRatioH) || 1);
-    setCropAspect(w / h);
-  }, [customRatioW, customRatioH, cropRatioMode]);
-
-  const confirmCropSelection = async () => {
-    if (!pendingImageDataUrl || !selectedCropPixels) {
-      setCropOpen(false);
-      return;
-    }
-
-    try {
-      const cropped = await cropImageToDataUrl(pendingImageDataUrl, selectedCropPixels);
-      setImageDataUrl(cropped.dataUrl);
-      setImageMeta({ width: cropped.width, height: cropped.height });
-      setCropOpen(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not crop image.");
-    }
-  };
-
-  const cancelCropSelection = () => {
-    setCropOpen(false);
-    setPendingImageDataUrl("");
-    setPendingImageMeta(null);
-    setInitialCropPixels(null);
-    setSelectedCropPixels(null);
   };
 
   const handleLyricsInput = (event) => {
@@ -1051,76 +759,6 @@ export default function App() {
 
   return (
     <div className="page-shell">
-      {cropOpen && pendingImageDataUrl ? (
-        <div className="crop-modal">
-          <div className="crop-panel">
-            <h2>Adjust Front Image Crop</h2>
-            <p>Auto-crop has been applied. Adjust if needed, then confirm.</p>
-            <div className="cropper-wrap" key={cropResetKey}>
-              <ReactCrop
-                crop={cropBox}
-                onChange={(_, percentCrop) => setCropBox(percentCrop)}
-                onComplete={handleCropComplete}
-                aspect={cropRatioMode === "free" ? undefined : cropAspect}
-                keepSelection
-                ruleOfThirds
-              >
-                <img
-                  src={pendingImageDataUrl}
-                  alt="Crop source"
-                  className="crop-target-img"
-                  onLoad={handleCropImageLoad}
-                />
-              </ReactCrop>
-            </div>
-
-            <label>
-              Crop ratio
-              <select value={cropRatioMode} onChange={(e) => handleCropRatioModeChange(e.target.value)}>
-                <option value="free">Freeform (drag width/height/diagonal)</option>
-                <option value="auto">Auto detected</option>
-                <option value="bookmark">Bookmark 2:5.5</option>
-                <option value="portrait4x5">Portrait 4:5</option>
-                <option value="square">Square 1:1</option>
-                <option value="custom">Custom</option>
-              </select>
-            </label>
-
-            {cropRatioMode === "custom" ? (
-              <div className="ratio-grid">
-                <label>
-                  Ratio width
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    value={customRatioW}
-                    onChange={(e) => setCustomRatioW(Number(e.target.value))}
-                  />
-                </label>
-                <label>
-                  Ratio height
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    value={customRatioH}
-                    onChange={(e) => setCustomRatioH(Number(e.target.value))}
-                  />
-                </label>
-              </div>
-            ) : null}
-            {pendingImageMeta ? (
-              <div className="crop-meta">Source image: {pendingImageMeta.width} x {pendingImageMeta.height}</div>
-            ) : null}
-            <div className="crop-actions">
-              <button type="button" className="toolbar-button" onClick={cancelCropSelection}>Cancel</button>
-              <button type="button" className="primary-button" onClick={confirmCropSelection}>Use Cropped Image</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <header className="hero">
         <h1>🔖 Bookmark Maker - Double-Sided Song Lyrics</h1>
         <p>4 bookmarks side-by-side. Image fills the entire front. Back is song title + lyrics, perfectly aligned.</p>
