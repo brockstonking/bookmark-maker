@@ -10,6 +10,7 @@ const INTERVAL_GAP = 0.5;
 const FALLBACK_ASPECT_RATIO = 5.5 / 2; // Height / width when no image has been uploaded yet.
 const BACK_TEXT_TOP_INSET = 0.35;
 const TITLE_LYRICS_GAP_IN = 0.18;
+const PRESET_BACK_COLORS = { tan: "#FBEDDC", green: "#DAD3C4" };
 const TITLE_FONT_STACK = '"Beau Rivage", "Allura", "Alex Brush", cursive';
 
 function imageToDataUrl(file) {
@@ -423,7 +424,8 @@ function suggestLyricsFontSize({
 export default function App() {
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [imageMeta, setImageMeta] = useState(null);
-  const [backColorHex, setBackColorHex] = useState("#FFFFFF");
+  const [backColorMode, setBackColorMode] = useState("tan");
+  const [customColorHex, setCustomColorHex] = useState("#FBEDDC");
   const [backImageElement, setBackImageElement] = useState(null);
   const [songTitle, setSongTitle] = useState("");
   const [titleSize, setTitleSize] = useState(20);
@@ -464,7 +466,9 @@ export default function App() {
   }, []);
 
   const aspectRatio = imageMeta ? imageMeta.height / imageMeta.width : FALLBACK_ASPECT_RATIO;
-  const effectiveBackColor = normalizeHexColor(backColorHex) || "#FFFFFF";
+  const effectiveBackColor = backColorMode === "custom"
+    ? normalizeHexColor(customColorHex) || "#FBEDDC"
+    : PRESET_BACK_COLORS[backColorMode];
   const bookmarkSize = useMemo(() => computeMaxBookmarkSize(aspectRatio), [aspectRatio]);
   const bookmarkW = bookmarkSize.width;
   const bookmarkH = bookmarkSize.height;
@@ -773,23 +777,48 @@ export default function App() {
             <input type="file" accept="image/png,image/jpeg" onChange={handleImageUpload} />
           </label>
 
-          <label>
-            Back side background color (hex)
-            <div className="hex-row">
-              <input
-                type="text"
-                value={backColorHex}
-                onChange={(e) => setBackColorHex(e.target.value)}
-                placeholder="#F5F0FF"
+          <div className="color-picker-section">
+            <span className="color-picker-label">Back side background color</span>
+            <div className="color-swatch-row">
+              <button
+                type="button"
+                className={`color-swatch${backColorMode === "tan" ? " color-swatch--active" : ""}`}
+                style={{ background: PRESET_BACK_COLORS.tan }}
+                onClick={() => setBackColorMode("tan")}
+                title="Tan"
               />
-              <input
-                type="color"
-                value={effectiveBackColor}
-                onChange={(e) => setBackColorHex(e.target.value.toUpperCase())}
-                aria-label="Pick back side color"
+              <button
+                type="button"
+                className={`color-swatch${backColorMode === "green" ? " color-swatch--active" : ""}`}
+                style={{ background: PRESET_BACK_COLORS.green }}
+                onClick={() => setBackColorMode("green")}
+                title="Sage"
               />
+              <button
+                type="button"
+                className={`color-swatch color-swatch--text${backColorMode === "custom" ? " color-swatch--active" : ""}`}
+                onClick={() => setBackColorMode("custom")}
+              >
+                Custom
+              </button>
             </div>
-          </label>
+            {backColorMode === "custom" && (
+              <div className="hex-row">
+                <input
+                  type="text"
+                  value={customColorHex}
+                  onChange={(e) => setCustomColorHex(e.target.value)}
+                  placeholder="#FBEDDC"
+                />
+                <input
+                  type="color"
+                  value={normalizeHexColor(customColorHex) || "#FBEDDC"}
+                  onChange={(e) => setCustomColorHex(e.target.value.toUpperCase())}
+                  aria-label="Pick back side color"
+                />
+              </div>
+            )}
+          </div>
 
           <div className="info-card">
             Bookmark size is auto-maximized for 4 across with 0.5 in spacing and edge clearance.
