@@ -594,7 +594,7 @@ export default function App() {
     ctx.fillStyle = effectiveBackColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const bottomImageHeight = Math.round(canvas.height * 0.2);
+    const bottomImageHeight = Math.round(canvas.height * 0.25);
     if (backImageElement && bottomImageHeight > 0) {
       const fullImageTop = Math.round(canvas.height * 0.68);
       const fullImageBottom = canvas.height;
