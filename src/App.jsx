@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const LETTER_WIDTH = 11;
 const LETTER_HEIGHT = 8.5;
@@ -7,30 +7,6 @@ const BOOKMARK_COUNT = 4;
 const EDGE_GAP = 0.5;
 const INTERVAL_GAP = 0.5;
 const FALLBACK_ASPECT_RATIO = 5.5 / 2; // Height / width when no image has been uploaded yet.
-
-function wrapLyrics(pdf, text, maxWidth, maxLines) {
-  const source = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const paragraphs = source.split("\n");
-  const lines = [];
-
-  for (const paragraph of paragraphs) {
-    if (paragraph.trim() === "") {
-      lines.push("");
-      if (lines.length >= maxLines) break;
-      continue;
-    }
-
-    const wrapped = pdf.splitTextToSize(paragraph, maxWidth);
-    for (const line of wrapped) {
-      lines.push(line);
-      if (lines.length >= maxLines) break;
-    }
-
-    if (lines.length >= maxLines) break;
-  }
-
-  return lines.slice(0, maxLines);
-}
 
 function imageToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -99,7 +75,7 @@ function fitSingleLineTitle(ctx, title, maxWidth, startPx, titleFont) {
   let content = title;
 
   const measure = (text, px) => {
-    ctx.font = `600 ${px}px ${family}`;
+    ctx.font = `400 ${px}px ${family}`;
     return ctx.measureText(text).width;
   };
 
@@ -118,19 +94,171 @@ function fitSingleLineTitle(ctx, title, maxWidth, startPx, titleFont) {
   return { text: content, sizePx };
 }
 
+function getLyricsSegmentsFromHtml(html) {
+  if (!html) return [];
+
+  const root = document.createElement("div");
+  root.innerHTML = html;
+
+  const segments = [];
+
+  const pushText = (text, italic) => {
+    const normalized = text.replace(/\u00a0/g, " ");
+    if (!normalized) return;
+    const prev = segments[segments.length - 1];
+    if (prev && !prev.newline && prev.italic === italic) {
+      prev.text += normalized;
+    } else {
+      segments.push({ text: normalized, italic });
+    }
+  };
+
+  const walk = (node, inheritedItalic) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      pushText(node.textContent || "", inheritedItalic);
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+
+    const tag = node.tagName.toLowerCase();
+    if (tag === "br") {
+      segments.push({ newline: true });
+      return;
+    }
+
+    const currentItalic = inheritedItalic || tag === "i" || tag === "em";
+    const isBlock = tag === "div" || tag === "p" || tag === "li";
+
+    node.childNodes.forEach((child) => walk(child, currentItalic));
+
+    if (isBlock) {
+      const prev = segments[segments.length - 1];
+      if (prev && !prev.newline) {
+        segments.push({ newline: true });
+      }
+    }
+  };
+
+  root.childNodes.forEach((child) => walk(child, false));
+
+  while (segments.length > 0 && segments[segments.length - 1].newline) {
+    segments.pop();
+  }
+
+  return segments;
+}
+
+function wrapStyledSegments(ctx, segments, maxWidth, maxLines, fontPx, fontFamily) {
+  const setFont = (italic) => {
+    ctx.font = `${italic ? "italic" : "normal"} 400 ${fontPx}px ${fontFamily}`;
+  };
+
+  const tokenWidth = (token, italic) => {
+    setFont(italic);
+    return ctx.measureText(token).width;
+  };
+
+  const lines = [];
+  let line = [];
+  let lineWidth = 0;
+
+  const pushLine = () => {
+    if (lines.length >= maxLines) return;
+    lines.push({ segments: line, width: lineWidth });
+    line = [];
+    lineWidth = 0;
+  };
+
+  const appendToken = (token, italic) => {
+    if (!token) return;
+    const width = tokenWidth(token, italic);
+    const last = line[line.length - 1];
+    if (last && last.italic === italic) {
+      last.text += token;
+      last.width += width;
+    } else {
+      line.push({ text: token, italic, width });
+    }
+    lineWidth += width;
+  };
+
+  for (const segment of segments) {
+    if (lines.length >= maxLines) break;
+
+    if (segment.newline) {
+      pushLine();
+      continue;
+    }
+
+    const tokens = segment.text.split(/(\s+)/);
+
+    for (const token of tokens) {
+      if (!token) continue;
+      if (lines.length >= maxLines) break;
+
+      const width = tokenWidth(token, segment.italic);
+      const fits = lineWidth + width <= maxWidth;
+
+      if (fits || line.length === 0) {
+        appendToken(token, segment.italic);
+        continue;
+      }
+
+      if (token.trim() === "") {
+        continue;
+      }
+
+      pushLine();
+      if (lines.length >= maxLines) break;
+
+      const tokenFitsOnEmptyLine = tokenWidth(token, segment.italic) <= maxWidth;
+      if (tokenFitsOnEmptyLine) {
+        appendToken(token, segment.italic);
+        continue;
+      }
+
+      for (const char of token) {
+        const charW = tokenWidth(char, segment.italic);
+        if (lineWidth + charW > maxWidth && line.length > 0) {
+          pushLine();
+          if (lines.length >= maxLines) break;
+        }
+        appendToken(char, segment.italic);
+      }
+    }
+  }
+
+  if (line.length > 0 && lines.length < maxLines) {
+    pushLine();
+  }
+
+  return lines;
+}
+
 export default function App() {
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [imageMeta, setImageMeta] = useState(null);
   const [songTitle, setSongTitle] = useState("");
   const [titleFont, setTitleFont] = useState("Allura");
   const [titleSize, setTitleSize] = useState(20);
-  const [lyrics, setLyrics] = useState("");
+  const [lyricsHtml, setLyricsHtml] = useState("");
   const [fontSize, setFontSize] = useState(11);
   const [textAlign, setTextAlign] = useState("center");
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const lyricsEditorRef = useRef(null);
+
+  useEffect(() => {
+    if (lyricsEditorRef.current && lyricsEditorRef.current.innerHTML !== lyricsHtml) {
+      lyricsEditorRef.current.innerHTML = lyricsHtml;
+    }
+  }, [lyricsHtml]);
 
   const aspectRatio = imageMeta ? imageMeta.height / imageMeta.width : FALLBACK_ASPECT_RATIO;
   const bookmarkSize = useMemo(() => computeMaxBookmarkSize(aspectRatio), [aspectRatio]);
@@ -165,6 +293,24 @@ export default function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load uploaded image.");
     }
+  };
+
+  const handleLyricsInput = (event) => {
+    setLyricsHtml(event.currentTarget.innerHTML);
+  };
+
+  const handleLyricsKeyDown = (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "i") {
+      event.preventDefault();
+      document.execCommand("italic");
+      setLyricsHtml(lyricsEditorRef.current?.innerHTML || "");
+    }
+  };
+
+  const makeItalicSelection = () => {
+    lyricsEditorRef.current?.focus();
+    document.execCommand("italic");
+    setLyricsHtml(lyricsEditorRef.current?.innerHTML || "");
   };
 
   const drawFront = (pdf, pos) => {
@@ -205,8 +351,6 @@ export default function App() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const pad = 0.12 * canvasScale;
-    const textX = x + pad;
-    const textY = y + pad;
     const textW = canvas.width - pad * 2;
     const textH = canvas.height - pad * 2;
 
@@ -224,44 +368,40 @@ export default function App() {
 
     const lyricsStartY = pad + titleBlockH;
     const lyricsAvailH = textH - titleBlockH;
+    const lineH = lyricsPx * 1.3;
+    const maxLyricLines = Math.max(1, Math.floor(lyricsAvailH / lineH));
 
-    const lyricPdf = new jsPDF({ unit: "in", format: "letter" });
-    lyricPdf.setFont("times", "normal");
-    lyricPdf.setFontSize(fontSize);
-    const maxLyricLines = Math.max(1, Math.floor(lyricsAvailH / (lyricsPx * 1.3)));
-    const lines = wrapLyrics(lyricPdf, lyrics, textW / canvasScale, maxLyricLines);
+    const segments = getLyricsSegmentsFromHtml(lyricsHtml);
+    const lyricsFamily = '"Cormorant Garamond", "EB Garamond", "Cormorant", serif';
+    const lines = wrapStyledSegments(ctx, segments, textW, maxLyricLines, lyricsPx, lyricsFamily);
 
     ctx.fillStyle = "#111111";
     if (songTitle.trim()) {
       const titleFamily = titleFont === "Beau Rivage"
-        ? '\"Beau Rivage\", \"Allura\", \"Alex Brush\", cursive'
-        : '\"Allura\", \"Alex Brush\", \"Great Vibes\", cursive';
+        ? '"Beau Rivage", "Allura", "Alex Brush", cursive'
+        : '"Allura", "Alex Brush", "Great Vibes", cursive';
       ctx.font = `400 ${fittedTitle.sizePx}px ${titleFamily}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
       ctx.fillText(fittedTitle.text, canvas.width / 2, pad - fittedTitle.sizePx * 0.02);
     }
 
-    if (lines.length === 0) {
-      const png = canvas.toDataURL("image/png");
-      pdf.addImage(png, "PNG", x, y, bookmarkW, bookmarkH);
-      return;
-    }
+    if (lines.length > 0) {
+      let cursorY = lyricsStartY;
 
-    ctx.font = `400 ${lyricsPx}px \"Cormorant Garamond\", \"EB Garamond\", \"Cormorant\", serif`;
-    ctx.textBaseline = "top";
-    const lineH = lyricsPx * 1.3;
-    let cursorY = lyricsStartY;
+      for (const line of lines) {
+        let cursorX = textAlign === "center" ? (canvas.width - line.width) / 2 : pad;
 
-    for (const line of lines) {
-      if (textAlign === "left") {
-        ctx.textAlign = "left";
-        ctx.fillText(line, pad, cursorY);
-      } else {
-        ctx.textAlign = "center";
-        ctx.fillText(line, canvas.width / 2, cursorY);
+        for (const segment of line.segments) {
+          ctx.font = `${segment.italic ? "italic" : "normal"} 400 ${lyricsPx}px ${lyricsFamily}`;
+          ctx.textAlign = "left";
+          ctx.textBaseline = "top";
+          ctx.fillText(segment.text, cursorX, cursorY);
+          cursorX += segment.width;
+        }
+
+        cursorY += lineH;
       }
-      cursorY += lineH;
     }
 
     const backPng = canvas.toDataURL("image/png");
@@ -371,12 +511,18 @@ export default function App() {
           </label>
 
           <label>
-            Lyrics
-            <textarea
-              rows={12}
-              value={lyrics}
-              onChange={(e) => setLyrics(e.target.value)}
-              placeholder="Paste full lyrics here..."
+            Lyrics (Ctrl+I to toggle italics)
+            <div className="lyrics-toolbar">
+              <button type="button" className="toolbar-button" onClick={makeItalicSelection}>Italic</button>
+            </div>
+            <div
+              ref={lyricsEditorRef}
+              className="lyrics-editor"
+              contentEditable
+              suppressContentEditableWarning
+              data-placeholder="Type or paste lyrics here. Use Ctrl+I to italicize selected text."
+              onInput={handleLyricsInput}
+              onKeyDown={handleLyricsKeyDown}
             />
           </label>
 

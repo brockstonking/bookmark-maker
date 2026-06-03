@@ -129,6 +129,45 @@ textarea {
   resize: vertical;
 }
 
+.lyrics-toolbar {
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.toolbar-button {
+  width: auto;
+  min-width: 90px;
+  padding: 8px 12px;
+  font-weight: 700;
+  border: 1px solid #bfc6eb;
+  background: rgba(239, 242, 255, 0.95);
+  color: #312c53;
+  cursor: pointer;
+}
+
+.lyrics-editor {
+  margin-top: 0;
+  min-height: 220px;
+  border: 1px solid #cbd0ef;
+  border-radius: 10px;
+  padding: 10px 11px;
+  background: rgba(255, 255, 255, 0.92);
+  font: inherit;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.lyrics-editor:focus {
+  outline: 2px solid rgba(90, 103, 216, 0.25);
+  outline-offset: 1px;
+}
+
+.lyrics-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #7f7a97;
+}
+
 .checkbox-row {
   display: flex;
   align-items: center;
