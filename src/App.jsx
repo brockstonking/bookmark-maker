@@ -9,6 +9,7 @@ const EDGE_GAP = 0.5;
 const INTERVAL_GAP = 0.5;
 const FALLBACK_ASPECT_RATIO = 5.5 / 2; // Height / width when no image has been uploaded yet.
 const BACK_TEXT_TOP_INSET = 0.35;
+const TITLE_LYRICS_GAP_IN = 0.12;
 
 function imageToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -494,6 +495,7 @@ export default function App() {
 
     const pad = 0.12 * 300;
     const punchInset = BACK_TEXT_TOP_INSET * 300;
+    const titleLyricsGap = TITLE_LYRICS_GAP_IN * 300;
     const textW = canvas.width - pad * 2;
     const textH = canvas.height - pad * 2 - punchInset;
     const titlePx = titleSize * 4;
@@ -505,7 +507,7 @@ export default function App() {
     }
 
     const decorativeReserved = backImageElement ? canvas.height * 0.25 : 0;
-    const lyricsAvailH = Math.max(0, textH - titleBlockH - decorativeReserved);
+    const lyricsAvailH = Math.max(0, textH - titleBlockH - titleLyricsGap - decorativeReserved);
     const family = '"Cormorant Garamond", "EB Garamond", "Cormorant", serif';
     const suggestion = suggestLyricsFontSize({
       minPt: 8,
@@ -650,6 +652,7 @@ export default function App() {
 
     const pad = 0.12 * canvasScale;
     const punchInset = BACK_TEXT_TOP_INSET * canvasScale;
+    const titleLyricsGap = TITLE_LYRICS_GAP_IN * canvasScale;
     const textW = canvas.width - pad * 2;
     const textH = canvas.height - pad * 2 - punchInset;
 
@@ -667,8 +670,8 @@ export default function App() {
 
     const decorativeReserved = backImageElement ? canvas.height * 0.25 : 0;
     const textTopY = pad + punchInset;
-    const lyricsStartY = textTopY + titleBlockH;
-    const lyricsAvailH = Math.max(0, textH - titleBlockH - decorativeReserved);
+    const lyricsStartY = textTopY + titleBlockH + titleLyricsGap;
+    const lyricsAvailH = Math.max(0, textH - titleBlockH - titleLyricsGap - decorativeReserved);
     const lineH = lyricsPx * 1.3;
     const maxLyricLines = Math.max(1, Math.floor(lyricsAvailH / lineH));
 
