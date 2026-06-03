@@ -9,7 +9,8 @@ const EDGE_GAP = 0.5;
 const INTERVAL_GAP = 0.5;
 const FALLBACK_ASPECT_RATIO = 5.5 / 2; // Height / width when no image has been uploaded yet.
 const BACK_TEXT_TOP_INSET = 0.35;
-const TITLE_LYRICS_GAP_IN = 0.12;
+const TITLE_LYRICS_GAP_IN = 0.18;
+const TITLE_FONT_STACK = '"Beau Rivage", "Allura", "Alex Brush", cursive';
 
 function imageToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -94,18 +95,16 @@ function computeSingleRowPositions(bookmarkW, bookmarkH) {
   }));
 }
 
-async function ensureFontsLoaded(titleSize, lyricSize, titleFont) {
+async function ensureFontsLoaded(titleSize, lyricSize) {
   if (!document?.fonts?.load) return;
   await Promise.all([
-    document.fonts.load(`${titleSize * 4}px "${titleFont}"`),
+    document.fonts.load(`${titleSize * 4}px "Beau Rivage"`),
     document.fonts.load(`${lyricSize * 4}px "Cormorant Garamond"`)
   ]);
 }
 
-function fitSingleLineTitle(ctx, title, maxWidth, startPx, titleFont) {
-  const family = titleFont === "Beau Rivage"
-    ? '"Beau Rivage", "Allura", "Alex Brush", cursive'
-    : '"Allura", "Alex Brush", "Great Vibes", cursive';
+function fitSingleLineTitle(ctx, title, maxWidth, startPx) {
+  const family = TITLE_FONT_STACK;
   const minPx = 34;
   let sizePx = startPx;
   let content = title;
@@ -427,7 +426,6 @@ export default function App() {
   const [backColorHex, setBackColorHex] = useState("#FFFFFF");
   const [backImageElement, setBackImageElement] = useState(null);
   const [songTitle, setSongTitle] = useState("");
-  const [titleFont, setTitleFont] = useState("Allura");
   const [titleSize, setTitleSize] = useState(20);
   const [lyricsHtml, setLyricsHtml] = useState("");
   const [fontSize, setFontSize] = useState(11);
@@ -502,7 +500,7 @@ export default function App() {
 
     let titleBlockH = 0;
     if (songTitle.trim()) {
-      const fitted = fitSingleLineTitle(ctx, songTitle.trim(), textW, titlePx, titleFont);
+      const fitted = fitSingleLineTitle(ctx, songTitle.trim(), textW, titlePx);
       titleBlockH = fitted.sizePx * 0.86 + fitted.sizePx * 0.08;
     }
 
@@ -520,7 +518,7 @@ export default function App() {
       ctx
     });
     setSuggestedFontSize(suggestion);
-  }, [lyricsHtml, bookmarkW, bookmarkH, songTitle, titleSize, titleFont, backImageElement, fontSize]);
+  }, [lyricsHtml, bookmarkW, bookmarkH, songTitle, titleSize, backImageElement, fontSize]);
 
   const handleImageUpload = async (event) => {
     setError("");
@@ -662,7 +660,7 @@ export default function App() {
     let fittedTitle = null;
     let titleBlockH = 0;
     if (songTitle.trim()) {
-      fittedTitle = fitSingleLineTitle(ctx, songTitle.trim(), textW, titlePx, titleFont);
+      fittedTitle = fitSingleLineTitle(ctx, songTitle.trim(), textW, titlePx);
       const titleLineH = fittedTitle.sizePx * 0.86;
       const titleGap = fittedTitle.sizePx * 0.08;
       titleBlockH = titleLineH + titleGap;
@@ -682,10 +680,7 @@ export default function App() {
 
     ctx.fillStyle = "#111111";
     if (songTitle.trim()) {
-      const titleFamily = titleFont === "Beau Rivage"
-        ? '"Beau Rivage", "Allura", "Alex Brush", cursive'
-        : '"Allura", "Alex Brush", "Great Vibes", cursive';
-      ctx.font = `400 ${fittedTitle.sizePx}px ${titleFamily}`;
+      ctx.font = `400 ${fittedTitle.sizePx}px ${TITLE_FONT_STACK}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
       ctx.fillText(fittedTitle.text, canvas.width / 2, textTopY - fittedTitle.sizePx * 0.02);
@@ -735,7 +730,7 @@ export default function App() {
 
     setIsGenerating(true);
     try {
-      await ensureFontsLoaded(titleSize, fontSize, titleFont);
+      await ensureFontsLoaded(titleSize, fontSize);
       const positions = computeSingleRowPositions(bookmarkW, bookmarkH);
 
       const pdf = new jsPDF({
@@ -814,14 +809,6 @@ export default function App() {
               onChange={(e) => setSongTitle(e.target.value)}
               placeholder="Enter song title"
             />
-          </label>
-
-          <label>
-            Song title font
-            <select value={titleFont} onChange={(e) => setTitleFont(e.target.value)}>
-              <option value="Allura">Allura</option>
-              <option value="Beau Rivage">Beau Rivage</option>
-            </select>
           </label>
 
           <label>
