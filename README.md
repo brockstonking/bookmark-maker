@@ -29,3 +29,36 @@ streamlit run app.py
 After deploy, you will get a public URL like:
 
 `https://your-app-name.streamlit.app`
+
+If you get `DNS_PROBE_FINISHED_NXDOMAIN` right after deploy:
+
+1. Wait 2-10 minutes and hard refresh.
+2. Open the app from your Streamlit dashboard using the globe icon (this avoids typo/cached URL issues).
+3. Try a different network or DNS (for example Cloudflare `1.1.1.1` or Google `8.8.8.8`).
+4. Rename the app URL in Streamlit settings and redeploy.
+
+## Alternative Deployment 1: Hugging Face Spaces (recommended fallback)
+
+Hugging Face Spaces runs Streamlit apps directly and gives a stable public URL.
+
+1. Create a new Space at https://huggingface.co/new-space
+2. Choose **Streamlit** SDK.
+3. Connect this GitHub repository or upload these files.
+4. Ensure `app.py` and `requirements.txt` are in the Space root.
+5. Spaces builds automatically and provides a URL like:
+	`https://huggingface.co/spaces/<username>/bookmark-maker`
+
+## Alternative Deployment 2: Render (Docker)
+
+This repo includes Docker deployment files:
+
+- `Dockerfile`
+- `render.yaml`
+
+To deploy on Render:
+
+1. Go to https://render.com/
+2. Create **New +** > **Blueprint**.
+3. Select this repository.
+4. Render reads `render.yaml`, builds Docker, and deploys.
+5. You get a public URL like `https://bookmark-maker.onrender.com`.
