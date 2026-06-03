@@ -245,8 +245,7 @@ export default function App() {
     ctx.font = `400 ${lyricsPx}px \"Cormorant Garamond\", \"EB Garamond\", \"Cormorant\", serif`;
     ctx.textBaseline = "top";
     const lineH = lyricsPx * 1.3;
-    const blockH = lines.length * lineH;
-    let cursorY = lyricsStartY + Math.max(0, (lyricsAvailH - blockH) / 2);
+    let cursorY = lyricsStartY;
 
     for (const line of lines) {
       if (textAlign === "left") {
