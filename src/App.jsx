@@ -38,6 +38,131 @@ function loadHtmlImage(dataUrl) {
   });
 }
 
+async function autoCropFrontContent(dataUrl) {
+  const img = await loadHtmlImage(dataUrl);
+
+  const maxDetectSize = 1200;
+  const detectScale = Math.min(1, maxDetectSize / Math.max(img.naturalWidth, img.naturalHeight));
+  const detectW = Math.max(1, Math.round(img.naturalWidth * detectScale));
+  const detectH = Math.max(1, Math.round(img.naturalHeight * detectScale));
+
+  const detectCanvas = document.createElement("canvas");
+  detectCanvas.width = detectW;
+  detectCanvas.height = detectH;
+  const dctx = detectCanvas.getContext("2d", { willReadFrequently: true });
+  if (!dctx) {
+    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+  }
+
+  dctx.drawImage(img, 0, 0, detectW, detectH);
+  const imageData = dctx.getImageData(0, 0, detectW, detectH);
+  const px = imageData.data;
+
+  const samplePixel = (x, y) => {
+    const i = (y * detectW + x) * 4;
+    return [px[i], px[i + 1], px[i + 2], px[i + 3]];
+  };
+
+  let rSum = 0;
+  let gSum = 0;
+  let bSum = 0;
+  let aSum = 0;
+  let count = 0;
+
+  // Estimate background color from a sparse ring near the outer edges.
+  const inset = Math.max(1, Math.floor(Math.min(detectW, detectH) * 0.015));
+  const xStep = Math.max(2, Math.floor(detectW / 120));
+  const yStep = Math.max(2, Math.floor(detectH / 120));
+
+  for (let x = inset; x < detectW - inset; x += xStep) {
+    const top = samplePixel(x, inset);
+    const bottom = samplePixel(x, detectH - inset - 1);
+    rSum += top[0] + bottom[0];
+    gSum += top[1] + bottom[1];
+    bSum += top[2] + bottom[2];
+    aSum += top[3] + bottom[3];
+    count += 2;
+  }
+  for (let y = inset; y < detectH - inset; y += yStep) {
+    const left = samplePixel(inset, y);
+    const right = samplePixel(detectW - inset - 1, y);
+    rSum += left[0] + right[0];
+    gSum += left[1] + right[1];
+    bSum += left[2] + right[2];
+    aSum += left[3] + right[3];
+    count += 2;
+  }
+
+  if (count === 0) {
+    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+  }
+
+  const bgR = rSum / count;
+  const bgG = gSum / count;
+  const bgB = bSum / count;
+  const bgA = aSum / count;
+
+  const diffThreshold = 58;
+  let minX = detectW;
+  let minY = detectH;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < detectH; y += 1) {
+    for (let x = 0; x < detectW; x += 1) {
+      const i = (y * detectW + x) * 4;
+      const dr = Math.abs(px[i] - bgR);
+      const dg = Math.abs(px[i + 1] - bgG);
+      const db = Math.abs(px[i + 2] - bgB);
+      const da = Math.abs(px[i + 3] - bgA) * 0.25;
+      const diff = dr + dg + db + da;
+
+      if (diff > diffThreshold) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+  }
+
+  const boxW = maxX - minX + 1;
+  const boxH = maxY - minY + 1;
+  const areaRatio = (boxW * boxH) / (detectW * detectH);
+
+  // If there is no meaningful border to trim, keep original.
+  if (areaRatio > 0.96) {
+    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+  }
+
+  const pad = Math.max(2, Math.floor(Math.min(detectW, detectH) * 0.008));
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(detectW - 1, maxX + pad);
+  maxY = Math.min(detectH - 1, maxY + pad);
+
+  const sx = Math.round((minX / detectW) * img.naturalWidth);
+  const sy = Math.round((minY / detectH) * img.naturalHeight);
+  const sw = Math.max(1, Math.round(((maxX - minX + 1) / detectW) * img.naturalWidth));
+  const sh = Math.max(1, Math.round(((maxY - minY + 1) / detectH) * img.naturalHeight));
+
+  const cropCanvas = document.createElement("canvas");
+  cropCanvas.width = sw;
+  cropCanvas.height = sh;
+  const cctx = cropCanvas.getContext("2d");
+  if (!cctx) {
+    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+  }
+
+  cctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  const croppedDataUrl = cropCanvas.toDataURL("image/jpeg", 0.95);
+  return { dataUrl: croppedDataUrl, width: sw, height: sh };
+}
+
 function normalizeHexColor(value) {
   const raw = (value || "").trim();
   const shortMatch = raw.match(/^#([0-9a-fA-F]{3})$/);
@@ -531,9 +656,9 @@ export default function App() {
 
     try {
       const dataUrl = await imageToDataUrl(file);
-      const dimensions = await loadImageDimensions(dataUrl);
-      setImageDataUrl(dataUrl);
-      setImageMeta(dimensions);
+      const cropped = await autoCropFrontContent(dataUrl);
+      setImageDataUrl(cropped.dataUrl);
+      setImageMeta({ width: cropped.width, height: cropped.height });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load uploaded image.");
     }
