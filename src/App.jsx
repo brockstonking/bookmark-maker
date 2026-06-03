@@ -439,13 +439,18 @@ export default function App() {
       }
 
       const drawX = destX + (destW - drawW) / 2;
-      const drawY = destY + (destH - drawH) / 2;
+      // Keep the photo pinned to the bookmark bottom; overflow is cropped off the top.
+      const drawY = destY + destH - drawH;
 
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(destX, destY, destW, destH);
+      ctx.clip();
       ctx.drawImage(backImageElement, drawX, drawY, drawW, drawH);
+      ctx.restore();
 
-      const blendHeight = Math.round(canvas.height * 0.12);
-      const blendTop = Math.max(0, destY - blendHeight);
-      const blendBottom = Math.min(canvas.height, destY + blendHeight);
+      const blendTop = Math.round(canvas.height * 0.8);
+      const blendBottom = canvas.height;
       const gradient = ctx.createLinearGradient(0, blendTop, 0, blendBottom);
       gradient.addColorStop(0, hexToRgba(effectiveBackColor, 1));
       gradient.addColorStop(1, hexToRgba(effectiveBackColor, 0));
@@ -469,7 +474,8 @@ export default function App() {
       titleBlockH = titleLineH + titleGap;
     }
 
-    const decorativeReserved = backImageDataUrl ? canvas.height * 0.28 : 0;
+    // Lyrics are rendered above decorative layers, so no reserved exclusion zone is needed.
+    const decorativeReserved = 0;
     const lyricsStartY = pad + titleBlockH;
     const lyricsAvailH = Math.max(0, textH - titleBlockH - decorativeReserved);
     const lineH = lyricsPx * 1.3;
