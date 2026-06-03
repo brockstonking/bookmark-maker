@@ -57,6 +57,11 @@ body {
   gap: 16px;
 }
 
+.layout-grid.single-column {
+  grid-template-columns: minmax(0, 760px);
+  justify-content: center;
+}
+
 .panel {
   border: 1px solid var(--line);
   background: var(--panel);
