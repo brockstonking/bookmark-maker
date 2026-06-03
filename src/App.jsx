@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { useEffect, useMemo, useRef, useState } from "react";
+import Cropper from "react-easy-crop";
 import templeBackImage from "../assets/images/Rexburg_temple_golden.jpg";
 
 const LETTER_WIDTH = 11;
@@ -38,7 +39,7 @@ function loadHtmlImage(dataUrl) {
   });
 }
 
-async function autoCropFrontContent(dataUrl) {
+async function detectAutoCropBox(dataUrl) {
   const img = await loadHtmlImage(dataUrl);
 
   const maxDetectSize = 900;
@@ -51,7 +52,7 @@ async function autoCropFrontContent(dataUrl) {
   detectCanvas.height = detectH;
   const dctx = detectCanvas.getContext("2d", { willReadFrequently: true });
   if (!dctx) {
-    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+    return { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight };
   }
 
   dctx.drawImage(img, 0, 0, detectW, detectH);
@@ -94,7 +95,7 @@ async function autoCropFrontContent(dataUrl) {
   }
 
   if (count === 0) {
-    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+    return { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight };
   }
 
   const bgR = rSum / count;
@@ -164,7 +165,7 @@ async function autoCropFrontContent(dataUrl) {
   }
 
   if (maxX < minX || maxY < minY) {
-    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+    return { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight };
   }
 
   const boxW = maxX - minX + 1;
@@ -173,7 +174,7 @@ async function autoCropFrontContent(dataUrl) {
 
   // If there is no meaningful border to trim, keep original.
   if (areaRatio > 0.98) {
-    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+    return { x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight };
   }
 
   const pad = Math.max(2, Math.floor(Math.min(detectW, detectH) * 0.008));
@@ -187,17 +188,30 @@ async function autoCropFrontContent(dataUrl) {
   const sw = Math.max(1, Math.round(((maxX - minX + 1) / detectW) * img.naturalWidth));
   const sh = Math.max(1, Math.round(((maxY - minY + 1) / detectH) * img.naturalHeight));
 
-  const cropCanvas = document.createElement("canvas");
-  cropCanvas.width = sw;
-  cropCanvas.height = sh;
-  const cctx = cropCanvas.getContext("2d");
-  if (!cctx) {
-    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+  return { x: sx, y: sy, width: sw, height: sh };
+}
+
+async function cropImageToDataUrl(sourceDataUrl, cropPixels) {
+  const img = await loadHtmlImage(sourceDataUrl);
+  const safeX = Math.max(0, Math.min(img.naturalWidth - 1, Math.round(cropPixels.x)));
+  const safeY = Math.max(0, Math.min(img.naturalHeight - 1, Math.round(cropPixels.y)));
+  const safeW = Math.max(1, Math.min(img.naturalWidth - safeX, Math.round(cropPixels.width)));
+  const safeH = Math.max(1, Math.min(img.naturalHeight - safeY, Math.round(cropPixels.height)));
+
+  const out = document.createElement("canvas");
+  out.width = safeW;
+  out.height = safeH;
+  const octx = out.getContext("2d");
+  if (!octx) {
+    return { dataUrl: sourceDataUrl, width: img.naturalWidth, height: img.naturalHeight };
   }
 
-  cctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-  const croppedDataUrl = cropCanvas.toDataURL("image/jpeg", 0.95);
-  return { dataUrl: croppedDataUrl, width: sw, height: sh };
+  octx.drawImage(img, safeX, safeY, safeW, safeH, 0, 0, safeW, safeH);
+  return {
+    dataUrl: out.toDataURL("image/jpeg", 0.95),
+    width: safeW,
+    height: safeH
+  };
 }
 
 function normalizeHexColor(value) {
@@ -584,6 +598,15 @@ function suggestLyricsFontSize({
 export default function App() {
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [imageMeta, setImageMeta] = useState(null);
+  const [cropOpen, setCropOpen] = useState(false);
+  const [pendingImageDataUrl, setPendingImageDataUrl] = useState("");
+  const [pendingImageMeta, setPendingImageMeta] = useState(null);
+  const [cropAspect, setCropAspect] = useState(2 / 5.5);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [initialCropPixels, setInitialCropPixels] = useState(null);
+  const [selectedCropPixels, setSelectedCropPixels] = useState(null);
+  const [cropResetKey, setCropResetKey] = useState(0);
   const [backColorHex, setBackColorHex] = useState("#FFFFFF");
   const [backImageElement, setBackImageElement] = useState(null);
   const [songTitle, setSongTitle] = useState("");
@@ -688,17 +711,59 @@ export default function App() {
     if (!file) {
       setImageDataUrl("");
       setImageMeta(null);
+      setPendingImageDataUrl("");
+      setPendingImageMeta(null);
+      setCropOpen(false);
       return;
     }
 
     try {
       const dataUrl = await imageToDataUrl(file);
-      const cropped = await autoCropFrontContent(dataUrl);
-      setImageDataUrl(cropped.dataUrl);
-      setImageMeta({ width: cropped.width, height: cropped.height });
+      const dimensions = await loadImageDimensions(dataUrl);
+      const detected = await detectAutoCropBox(dataUrl);
+
+      setPendingImageDataUrl(dataUrl);
+      setPendingImageMeta(dimensions);
+
+      const aspect = Math.max(0.05, detected.width / detected.height);
+      setCropAspect(aspect);
+      setInitialCropPixels(detected);
+      setSelectedCropPixels(detected);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setCropResetKey((key) => key + 1);
+      setCropOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load uploaded image.");
     }
+  };
+
+  const handleCropComplete = (_, croppedAreaPixels) => {
+    setSelectedCropPixels(croppedAreaPixels);
+  };
+
+  const confirmCropSelection = async () => {
+    if (!pendingImageDataUrl || !selectedCropPixels) {
+      setCropOpen(false);
+      return;
+    }
+
+    try {
+      const cropped = await cropImageToDataUrl(pendingImageDataUrl, selectedCropPixels);
+      setImageDataUrl(cropped.dataUrl);
+      setImageMeta({ width: cropped.width, height: cropped.height });
+      setCropOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not crop image.");
+    }
+  };
+
+  const cancelCropSelection = () => {
+    setCropOpen(false);
+    setPendingImageDataUrl("");
+    setPendingImageMeta(null);
+    setInitialCropPixels(null);
+    setSelectedCropPixels(null);
   };
 
   const handleLyricsInput = (event) => {
@@ -921,6 +986,46 @@ export default function App() {
 
   return (
     <div className="page-shell">
+      {cropOpen && pendingImageDataUrl ? (
+        <div className="crop-modal">
+          <div className="crop-panel">
+            <h2>Adjust Front Image Crop</h2>
+            <p>Auto-crop has been applied. Adjust if needed, then confirm.</p>
+            <div className="cropper-wrap" key={cropResetKey}>
+              <Cropper
+                image={pendingImageDataUrl}
+                crop={crop}
+                zoom={zoom}
+                aspect={cropAspect}
+                initialCroppedAreaPixels={initialCropPixels || undefined}
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={handleCropComplete}
+                objectFit="contain"
+              />
+            </div>
+            <label>
+              Zoom ({zoom.toFixed(2)}x)
+              <input
+                type="range"
+                min="1"
+                max="4"
+                step="0.01"
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+              />
+            </label>
+            {pendingImageMeta ? (
+              <div className="crop-meta">Source image: {pendingImageMeta.width} x {pendingImageMeta.height}</div>
+            ) : null}
+            <div className="crop-actions">
+              <button type="button" className="toolbar-button" onClick={cancelCropSelection}>Cancel</button>
+              <button type="button" className="primary-button" onClick={confirmCropSelection}>Use Cropped Image</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <header className="hero">
         <h1>🔖 Bookmark Maker - Double-Sided Song Lyrics</h1>
         <p>4 bookmarks side-by-side. Image fills the entire front. Back is song title + lyrics, perfectly aligned.</p>
